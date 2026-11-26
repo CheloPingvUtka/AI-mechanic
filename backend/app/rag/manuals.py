@@ -1,6 +1,7 @@
 """Registry of factory manuals: which PDF covers which engine and how to cite it.
 
 `title` is the designation from section 3 of the ТЗ; it goes into ticket `references[].manual`.
+`short` is what the mechanic sees next to a citation.
 PDF files themselves live outside Git, in KNOWLEDGE_BASE_PATH.
 """
 from dataclasses import dataclass
@@ -12,6 +13,11 @@ class Manual:
     file: str
     title: str
     engines: tuple[str, ...]
+    short: str = ""
+
+    def __post_init__(self):
+        if not self.short:
+            object.__setattr__(self, "short", self.title)
 
 
 MANUALS = (
@@ -24,6 +30,7 @@ MANUALS = (
         "zmz-5234_rk_2025.pdf",
         "Двигатели ЗМЗ-5234.10 со сцеплением. Руководство по ремонту",
         ("ЗМЗ-5234.10",),
+        "Руководство по ремонту ЗМЗ-5234.10",
     ),
     Manual(
         "zmz409_rk",
@@ -31,6 +38,7 @@ MANUALS = (
         "Двигатели ЗМЗ-40904.10 и ЗМЗ-40905.10. Руководство по эксплуатации, "
         "техническому обслуживанию и ремонту",
         ("ЗМЗ-40904.10", "ЗМЗ-40905.10"),
+        "Руководство ЗМЗ-40904.10/40905.10",
     ),
 )
 

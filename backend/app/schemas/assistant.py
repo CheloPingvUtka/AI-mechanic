@@ -1,29 +1,37 @@
 from pydantic import BaseModel, Field
 
+from app.schemas.diagnostics import DiagnoseResponse
+
 
 class ChatRequest(BaseModel):
     vehicle_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
-    session_id: str | None = None
+    conversation_id: str | None = None
+    session_id: str | None = Field(None, description="Проверка; по умолчанию последняя проверка машины")
+    confirm_warning: bool = Field(
+        False, description="Механик прочитал предупреждение о качестве записи и подтверждает заявку"
+    )
 
 
 class SourceReference(BaseModel):
     manual: str
     pdf_page: int
-    excerpt: str | None = None
+    excerpt: str
+    ocr: bool = False
 
 
-class RepairPlan(BaseModel):
-    observations: list[str] = []
-    possible_causes: list[str] = []
-    checks: list[str] = []
-    repair_actions: list[str] = []
-    urgency: str | None = None
+class Step(BaseModel):
+    name: str  # "llm" or the tool name
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost_usd: float = 0.0
 
 
 class ChatResponse(BaseModel):
+    conversation_id: str
     answer: str
-    repair_plan: RepairPlan | None = None
     sources: list[SourceReference] = []
-    needs_human_confirmation: bool = True
-    knowledge_found: bool
+    diagnosis: DiagnoseResponse | None = None
+    ticket: dict | None = None
+    steps: list[Step] = []
+    cost_usd: float = 0.0

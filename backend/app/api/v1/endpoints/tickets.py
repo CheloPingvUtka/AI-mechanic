@@ -8,9 +8,9 @@ router = APIRouter()
 
 
 @router.post("", status_code=201, summary="Создать заявку на дефектовку")
-async def create_ticket(payload: TicketCreate):
+async def create_ticket(payload: TicketCreate, confirm_warning: bool = False):
     try:
-        return await TicketsService().create(payload)
+        return await TicketsService().create(payload, warning_confirmed=confirm_warning)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except httpx.HTTPStatusError as exc:

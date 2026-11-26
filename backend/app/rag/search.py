@@ -29,6 +29,14 @@ class Hit:
     text: str
     ocr: bool = False  # recognised from a scan: numbers may be misread, check the page image
 
+    @property
+    def ref(self) -> str:
+        return f"{self.manual_id}:{self.pdf_page}"
+
+    @property
+    def short(self) -> str:
+        return BY_ID[self.manual_id].short
+
 
 class PageIndex:
     def __init__(self, rows: list[dict]) -> None:

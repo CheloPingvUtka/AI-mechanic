@@ -1,30 +1,58 @@
 import pytest
-from pydantic import ValidationError
 
-from app.domain.diagnostic_rules import ensure_diagnosis_allows_repair_advice
+from app.domain.diagnostic_rules import ticket_block_reason, urgency
 from app.schemas.diagnostics import DiagnoseResponse
 
 
-def make_result(status: str, anomaly_type: str | None):
+def make_result(status="anomaly", anomaly_type="F08", confidence=0.73, quality="good", score=0.76):
+    failed = status == "check_failed"
     return DiagnoseResponse(
         vehicle_id="M333YK47",
         session_id="S-0005",
         status=status,
-        anomaly_type=anomaly_type,
-        anomaly_title="Тест" if anomaly_type else None,
-        anomaly_score=0.76 if status == "anomaly" else None,
-        confidence=0.73 if status != "check_failed" else None,
-        signal_quality="good" if status != "check_failed" else "bad",
+        anomaly_type=anomaly_type if status == "anomaly" else None,
+        anomaly_title="Тест" if status == "anomaly" else None,
+        anomaly_score=None if failed else score,
+        confidence=None if failed else confidence,
+        signal_quality="bad" if failed else quality,
         description="test",
         model_version="mock-v1",
     )
 
 
-def test_anomaly_allows_ticket_flow():
-    ensure_diagnosis_allows_repair_advice(make_result("anomaly", "F08"))
+def test_good_anomaly_allows_ticket():
+    assert ticket_block_reason(make_result(), warning_confirmed=False, fuel="дизель") is None
 
 
-@pytest.mark.parametrize("status", ["normal", "check_failed"])
-def test_non_anomaly_is_blocked(status: str):
-    with pytest.raises(ValueError):
-        ensure_diagnosis_allows_repair_advice(make_result(status, None))
+@pytest.mark.parametrize(
+    "result",
+    [
+        make_result("normal"),
+        make_result("check_failed"),
+        make_result(quality="bad"),
+        make_result(confidence=0.49),
+        make_result(quality="warning"),
+    ],
+)
+def test_ticket_blocked(result):
+    assert ticket_block_reason(result, warning_confirmed=False)
+
+
+def test_warning_needs_explicit_confirmation():
+    assert ticket_block_reason(make_result(quality="warning"), warning_confirmed=True) is None
+    # confirmation never overrides a low confidence
+    assert ticket_block_reason(make_result(quality="warning", confidence=0.4), warning_confirmed=True)
+
+
+@pytest.mark.parametrize("code,fuel", [("F12", "дизель"), ("F13", "дизель"), ("F08", "бензин")])
+def test_fault_impossible_for_fuel_blocks_ticket(code, fuel):
+    assert "топливе" in ticket_block_reason(make_result(anomaly_type=code), True, fuel)
+
+
+def test_urgency_base_and_bounded_score_adjustment():
+    assert urgency("F08", 0.70) == "medium"
+    assert urgency("F08", 0.90) == "high"
+    assert urgency("F08", 0.55) == "low"
+    assert urgency("F02", 0.99) == "high"  # already at the top
+    assert urgency("F05", 0.50) == "low"  # already at the bottom
+    assert urgency("F05", 0.50, operation_banned=True) == "high"
