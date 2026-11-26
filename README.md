@@ -1,72 +1,55 @@
 # Цифровой механик
 
-Общий репозиторий проекта для хакатона «ИИкузница». В репозитории находятся frontend, backend.
+Веб-прототип AI-агента для помощи механику при работе с результатами акустической диагностики двигателя.
 
-## Структура проекта
+## Структура репозитория
 
 ```text
- цифровой-механик/
- ├── frontend/                  # React-приложение механика
- ├── backend/                   # Основной backend проекта
- ├── .gitignore
- └── README.md
+.
+├── frontend/   # React + TypeScript + Vite
+├── backend/    # Python + FastAPI
+└── README.md
 ```
 
+**Mock ML и Mock ТОиР организаторов находятся в отдельном приватном репозитории.** Их код и тестовые данные не копируются сюда и не коммитятся. Backend обращается к ним по адресам из `backend/.env`.
 
-## Что нужно установить
-
-- Git
-- Node.js 20.19+ или 22.12+
-- Python 3.10+
+PDF-руководства, извлечённый текст и RAG-индексы также должны храниться отдельно от Git.
 
 ## Быстрый запуск
 
-### 1. Frontend
+### 1. Backend
 
-Откройте терминал в папке `frontend`:
+Откройте терминал в `backend`:
 
 ```powershell
-cd frontend
+py -3.11 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+Copy-Item .env.example .env
+uvicorn app.main:app --reload --port 8000
+```
+
+Перед запуском укажите в `backend/.env` адреса приватных Mock API и путь к внешнему `vehicles.json`.
+
+### 2. Frontend
+
+Откройте второй терминал в `frontend`:
+
+```powershell
 npm install
 Copy-Item .env.example .env
 npm run dev
 ```
 
-Приложение будет доступно по адресу: http://localhost:5173
+Frontend по умолчанию запускается Vite на <http://localhost:5173>. Backend API: <http://localhost:8000/docs>.
 
-Проверка сборки:
+## Документация частей проекта
 
-```powershell
-npm run build
-```
+- [Frontend](frontend/README.md)
+- [Backend](backend/README.md)
 
-## Переменные окружения frontend
+## Правила работы с данными
 
-Настройки находятся в `frontend/.env`. Пример значений — в `frontend/.env.example`.
-
-```env
-VITE_USE_MOCKS=false
-VITE_ML_API_URL=http://localhost:8001
-VITE_AGENT_API_URL=http://localhost:8003
-VITE_TOR_API_URL=http://localhost:8002
-```
-
-- `VITE_ML_API_URL` — адрес сервиса диагностики.
-- `VITE_TOR_API_URL` — адрес сервиса заявок ТОиР.
-- `VITE_AGENT_API_URL` — адрес Agent API. В mock-наборе организаторов такого сервиса нет; порт `8003` — пример адреса для будущего сервиса команды.
-- `VITE_USE_MOCKS` — переключатель локальных демонстрационных данных frontend. Для обращения к API установите `false`.
-
-Если frontend и backend используют другие адреса или порты, обновите значения в `.env`.
-
-## Основные правила работы с репозиторием
-
-1. Frontend и backend находятся в отдельных папках, но используют один Git-репозиторий.
-2. Не добавляйте в Git `node_modules`, виртуальные окружения Python, сборки, локальные `.env` и временные файлы.
-3. Не добавляйте в репозиторий заводские PDF-руководства, извлечённый из них текст и RAG-индексы. Храните такие материалы отдельно от репозитория.
-4. Не коммитьте секреты, пароли, токены и приватные ключи.
-5. Изменения API-контрактов согласовывайте между frontend и backend. При изменении маршрутов или форматов обновляйте документацию.
-
-## Текущий статус
-
-- Frontend — стартовый React/TypeScript проект.
-- Основной backend и Agent API — разрабатываются отдельно командой.
+- Не добавляйте в этот репозиторий приватный репозиторий Mock-сервисов, `vehicles.json`, `fault_types.json`, PDF-руководства, RAG-индексы и извлечённый текст.
+- Не коммитьте `.env` и секреты.
+- Для локальной разработки используйте `.env.example` как шаблон.
