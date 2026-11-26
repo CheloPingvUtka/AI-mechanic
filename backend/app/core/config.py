@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     vehicle_catalog_path: str = "../private-neurodvs-mock/data/vehicles.json"
     knowledge_base_path: str = "../private-knowledge"
     rag_enabled: bool = False
+    tessdata_dir: str = ""  # folder with rus.traineddata, if not in the system tessdata
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
