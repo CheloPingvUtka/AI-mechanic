@@ -1,0 +1,60 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Node.js / frontend
+node_modules/
+dist/
+coverage/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Python / backend
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build and temporary files
+build/
+tmp/
+temp/
+*.tmp
+*.log
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local databases and runtime data
+*.sqlite
+*.sqlite3
+*.db
+
+# Private technical documentation and RAG data
+manuals/
+knowledge/
+rag-index/
+rag_index/
+vector-store/
+vector_store/
+embeddings/
+*.faiss
+*.pkl
+*.pickle
