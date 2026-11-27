@@ -46,6 +46,14 @@ def _page(manual_id: str, page: int):
     return doc[page - 1]
 
 
+def _close(*objs) -> None:
+    """Close pdfium handles while still holding the lock: left to the garbage collector, they would be
+    closed after the lock is released, at the same time as another thread loads a page (a segfault)."""
+    for obj in objs:
+        if obj is not None:
+            obj.close()
+
+
 def page_count(manual_id: str) -> int:
     with _lock:
         return len(_doc(manual_id))
@@ -121,22 +129,29 @@ def figures(manual_id: str, page: int) -> tuple[tuple[float, float, float, float
     """Figure boxes (left, bottom, right, top in PDF points), top of the page first."""
     with _lock:
         pg = _page(manual_id, page)
-        width, height = pg.get_size()
-        boxes = [o.get_bounds() for o in pg.get_objects(filter=(pdfium_c.FPDF_PAGEOBJ_IMAGE,), max_depth=4)]
-        textpage = pg.get_textpage()
-        glyphs = [textpage.get_charbox(i) for i in range(textpage.count_chars())]
-        rendered = pg.render(scale=DETECT_SCALE, grayscale=True).to_pil().convert("L") if len(glyphs) >= 50 else None
-        area = width * height
-        found = [b for b in merge_boxes(boxes) if MIN_FIGURE <= (b[2] - b[0]) * (b[3] - b[1]) / area <= MAX_FIGURE]
-        for r, grid in ink_regions(rendered, glyphs, height) if rendered else []:
-            w, h = r[2] - r[0], r[3] - r[1]
-            share = w * h / area
-            if w < width * 0.12 or h < height * 0.06 or not MIN_FIGURE <= share <= MAX_FIGURE:
-                continue
-            chars = len(textpage.get_text_bounded(left=r[0], bottom=r[1], right=r[2], top=r[3]).strip())
-            limit = MAX_GRID_TEXT_DENSITY if grid else MAX_TEXT_DENSITY
-            if chars / share <= limit and not any(_overlaps(r, f) for f in found):
-                found.append(r)
+        textpage = bitmap = None
+        try:
+            width, height = pg.get_size()
+            boxes = [o.get_bounds() for o in pg.get_objects(filter=(pdfium_c.FPDF_PAGEOBJ_IMAGE,), max_depth=4)]
+            textpage = pg.get_textpage()
+            glyphs = [textpage.get_charbox(i) for i in range(textpage.count_chars())]
+            rendered = None
+            if len(glyphs) >= 50:
+                bitmap = pg.render(scale=DETECT_SCALE, grayscale=True)
+                rendered = bitmap.to_pil().convert("L")  # a copy: the bitmap can be closed
+            area = width * height
+            found = [b for b in merge_boxes(boxes) if MIN_FIGURE <= (b[2] - b[0]) * (b[3] - b[1]) / area <= MAX_FIGURE]
+            for r, grid in ink_regions(rendered, glyphs, height) if rendered else []:
+                w, h = r[2] - r[0], r[3] - r[1]
+                share = w * h / area
+                if w < width * 0.12 or h < height * 0.06 or not MIN_FIGURE <= share <= MAX_FIGURE:
+                    continue
+                chars = len(textpage.get_text_bounded(left=r[0], bottom=r[1], right=r[2], top=r[3]).strip())
+                limit = MAX_GRID_TEXT_DENSITY if grid else MAX_TEXT_DENSITY
+                if chars / share <= limit and not any(_overlaps(r, f) for f in found):
+                    found.append(r)
+        finally:
+            _close(bitmap, textpage, pg)
     return tuple(sorted(found, key=lambda b: -b[3]))
 
 
@@ -147,8 +162,12 @@ def caption(manual_id: str, page: int, figure: int) -> str:
         return ""
     left, bottom, right, _ = boxes[figure]
     with _lock:
-        textpage = _page(manual_id, page).get_textpage()
-        text = textpage.get_text_bounded(left=left - 20, bottom=bottom - 40, right=right + 20, top=bottom)
+        pg = _page(manual_id, page)
+        textpage = pg.get_textpage()
+        try:
+            text = textpage.get_text_bounded(left=left - 20, bottom=bottom - 40, right=right + 20, top=bottom)
+        finally:
+            _close(textpage, pg)
     return " ".join(text.split())[:160]
 
 
@@ -167,6 +186,7 @@ def highlight_boxes(textpage, text: str) -> list[tuple]:
         while (found := searcher.get_next()) is not None:
             start, count = found
             boxes += [textpage.get_rect(i) for i in range(textpage.count_rects(start, count))]
+        searcher.close()
     return boxes
 
 
@@ -187,11 +207,17 @@ def page_png(manual_id: str, page: int, width: int = 1000, figure: int | None = 
         box = boxes[figure]
     with _lock:
         pg = _page(manual_id, page)
-        pw, ph = pg.get_size()
-        scale = width / ((box[2] - box[0]) if box else pw)
-        crop = (0, 0, 0, 0) if box is None else (box[0], box[1], pw - box[2], ph - box[3])
-        image = pg.render(scale=scale, crop=crop).to_pil().convert("RGB")
-        marks = highlight_boxes(pg.get_textpage(), highlight) if highlight else []
+        bitmap = textpage = None
+        try:
+            pw, ph = pg.get_size()
+            scale = width / ((box[2] - box[0]) if box else pw)
+            crop = (0, 0, 0, 0) if box is None else (box[0], box[1], pw - box[2], ph - box[3])
+            bitmap = pg.render(scale=scale, crop=crop)
+            image = bitmap.to_pil().convert("RGB")
+            textpage = pg.get_textpage() if highlight else None
+            marks = highlight_boxes(textpage, highlight) if highlight else []
+        finally:
+            _close(bitmap, textpage, pg)
     if marks:
         overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)

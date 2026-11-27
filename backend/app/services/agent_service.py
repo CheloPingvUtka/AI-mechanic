@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
 from app.agent import figures
+from app.agent.meter import TokenMeter
 from app.agent.checks import answer_problems, render_citations
 from app.agent.plan import WorkPlan
 from app.agent.tools import TOOLS, AgentState, run_tool
@@ -59,6 +60,7 @@ SYSTEM_PROMPT = """Ты — «Цифровой механик», помощни�
 7. create_ticket вызывай только по команде механика. Нужна процедура именно того узла, на который указывает тип неисправности; процедура по смежному симптому (например, «двигатель работает неустойчиво» вместо системы зажигания) не годится. Если такой процедуры нет — заявку не создавай: объясни, что в руководстве на этот двигатель нет инструкции по этой неисправности, и дай текст рекомендации на дефектовку с результатом проверки. Если в диагнозе есть ticket_blocked_reason или create_ticket вернул error — объясни причину простыми словами. Если руководство прямо запрещает эксплуатацию при этой неисправности — передай цитату в operation_ban.
 8. Объём ответа.
    - Полный разбор — только когда механик просит объяснить результат проверки («Объясни результат проверки …») или просит подробно: первой строкой короткий вердикт, дальше разделы Наблюдения; Гипотезы (инженерная оценка, не из руководства); Проверки; Возможный ремонт; Источник; Ограничения.
+   - Шаги в ответах (проверки, «как сделать»). Порядок шагов: если руководство задаёт обязательную последовательность (разборка и сборка, регулировка по порядку цилиндров, затяжка в определённом порядке, проверка после регулировки) — сохраняй её как есть. Если шаги не зависят друг от друга (например, разные проверки причины), ставь их от простого к сложному: сначала осмотр и проверки без разборки и без инструмента, потом замеры инструментом, потом то, что требует снятия деталей, разборка и замена — в конце.
    - Любой другой вопрос — уточняющий: ответь прямо на него в 1–3 коротких предложениях, первой фразой — ответ («Да» / «Нет» / что сделать). Если в ответе норма или запрет — короткая цитата со ссылкой. Если просят «как сделать» — короткий нумерованный список шагов, каждый со ссылкой. Не повторяй результат проверки, уверенность, порог, приоритет, этап и то, что уже сказано выше; без разделов и заголовков. Гипотезу, если она нужна, — отдельной строкой «Гипотеза (не из руководства): …».
    Пиши просто, без JSON и без внутренних полей.
 9. Фото от механика: сначала check_photo — что на фото и похоже ли на двигатель этой машины ({engine}); если не похоже, скажи это первой строкой. Затем найди в руководстве рисунок этого узла (search_manual, затем view_page) и сравни. Вывод по фото — всегда гипотеза в разделе «Гипотезы»: скажи, что именно совпадает или не совпадает, на какой рисунок и страницу опирался, и что проверить руками. Размеры и нормы по фото не определяй.
@@ -105,7 +107,8 @@ def step_key(text: str) -> str:
     return re.sub(r"[\W_]+", "", plain)[:60]
 
 
-async def step_figures(answer: str, cited: list[Hit], steps: list[Step], emit: Emit) -> dict[str, dict]:
+async def step_figures(answer: str, cited: list[Hit], steps: list[Step], emit: Emit,
+                       meter: TokenMeter | None = None) -> dict[str, dict]:
     """For list items that cite a page: the drawing the model picked for each ({step_key: figure}), none if none fits."""
     by_ref = {(h.short, h.pdf_page): h for h in cited}
     items = []
@@ -120,7 +123,7 @@ async def step_figures(answer: str, cited: list[Hit], steps: list[Step], emit: E
         return {}
     emit({"type": "figures"})
     t0 = time.perf_counter()
-    picks, usage = await figures.pick(items)
+    picks, usage = await figures.pick(items, meter, emit)
     if usage.get("prompt_tokens"):
         steps.append(Step(name="llm:figures", prompt_tokens=usage["prompt_tokens"],
                           completion_tokens=usage["completion_tokens"], cost_usd=usage["cost"],
@@ -225,6 +228,7 @@ class AgentService:
     def __init__(self, catalog: JsonVehicleCatalog | None = None, llm: LLMClient | None = None) -> None:
         self.catalog = catalog or JsonVehicleCatalog()
         self.llm = llm or LLMClient()
+        self.meter = TokenMeter(lambda event: None)
 
     def _conversation(self, payload: ChatRequest) -> tuple[str, Conversation]:
         conv = CONVERSATIONS.get(payload.conversation_id or "")
@@ -250,11 +254,13 @@ class AgentService:
     ) -> dict:
         """One LLM call. The step is named by what the model did: llm:<tools it called>, llm:answer, llm:fix."""
         t0 = time.perf_counter()
-        message, usage = await self.llm.chat(conv.messages, TOOLS, tool_choice)
+        message, usage = await self.meter.call(self.llm, conv.messages, TOOLS, tool_choice)
         seconds = time.perf_counter() - t0
         called = sorted({c["function"]["name"] for c in message.get("tool_calls", [])})
         name = purpose or ("llm:" + "+".join(called) if called else "llm:answer")
-        log.info("%s %.1fs in=%s out=%s", name, seconds, usage.get("prompt_tokens"), usage.get("completion_tokens"))
+        log.info("%s %.1fs in=%s cached=%s out=%s reasoning=%s", name, seconds, usage.get("prompt_tokens"),
+                 (usage.get("prompt_tokens_details") or {}).get("cached_tokens"), usage.get("completion_tokens"),
+                 (usage.get("completion_tokens_details") or {}).get("reasoning_tokens"))
         conv.messages.append(message)
         steps.append(Step(
             name=name,
@@ -268,6 +274,7 @@ class AgentService:
     async def chat(self, payload: ChatRequest, emit: Emit | None = None) -> ChatResponse:
         """emit(event) reports progress as it happens: thinking, tool, tool_result, checking, fixing."""
         emit = emit or (lambda event: None)
+        self.meter = TokenMeter(emit)  # ↑↓ tokens of this answer, live
         conv_id, conv = self._conversation(payload)
         state = conv.state
         if payload.session_id and payload.session_id != state.session_id:
@@ -361,7 +368,7 @@ class AgentService:
                                   {"question": payload.message, "answer": answer[:2000]})
 
         answer, cited = render_citations(answer, state.hits)
-        pictures = await step_figures(answer, cited, steps, emit)
+        pictures = await step_figures(answer, cited, steps, emit, self.meter)
         new_ticket = tickets[-1] if len(tickets) > tickets_before else None
         conv.lang = payload.lang
         response = ChatResponse(

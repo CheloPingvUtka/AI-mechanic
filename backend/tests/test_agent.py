@@ -112,7 +112,7 @@ class ScriptedLLM:
     def __init__(self, replies):
         self.replies, self.calls = list(replies), []
 
-    async def chat(self, messages, tools, tool_choice="auto"):
+    async def chat(self, messages, tools, tool_choice="auto", on_tokens=None):
         self.calls.append((list(messages), tool_choice))
         return self.replies.pop(0), {"prompt_tokens": 10, "completion_tokens": 5, "cost": 0.001}
 
@@ -142,8 +142,9 @@ async def test_agent_loop_runs_tools_and_rejects_unsourced_numbers(monkeypatch):
     service = AgentService(catalog=FakeCatalog(), llm=llm)
     events = []
     response = await service.chat(ChatRequest(vehicle_id="M333YK47", message="Какой момент затяжки?"), events.append)
-    assert [e["type"] for e in events] == ["thinking", "tool", "tool_result", "thinking", "checking", "fixing"]
-    assert events[1]["args"] == {"query": "момент затяжки"}
+    assert [e["type"] for e in events if e["type"] != "tokens"] == ["thinking", "tool", "tool_result", "thinking", "checking", "fixing"]
+    assert events[-1]["type"] == "tokens" and events[-1]["up"] > 0  # the counter ends with the exact totals
+    assert next(e for e in events if e["type"] == "tool")["args"] == {"query": "момент затяжки"}
 
     assert response.answer == "Момент 421-461 Н·м (236.01.01 РК, стр. 41)."
     assert [s.manual for s in response.sources] == ["236.01.01 РК"]

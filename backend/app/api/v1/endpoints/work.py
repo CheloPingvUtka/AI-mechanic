@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.api.v1.endpoints.assistant import next_event
 from app.repositories import store
 from app.services import plan_service
 
@@ -86,6 +87,8 @@ async def stream_work(work_id: str):
         raise HTTPException(status_code=404, detail="Нет такой работы")
     queue: asyncio.Queue[dict] = asyncio.Queue()
     backlog = list(work.log)
+    if work.last_tokens and not any(e["type"] == "done" for e in backlog):
+        backlog.append(work.last_tokens)
     work.subscribers.add(queue)
 
     async def events():
@@ -95,7 +98,7 @@ async def stream_work(work_id: str):
                 if event["type"] == "done":
                     return
             while True:
-                event = await queue.get()
+                event = await next_event(queue)
                 yield f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
                 if event["type"] == "done":
                     return

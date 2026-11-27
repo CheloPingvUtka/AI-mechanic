@@ -11,6 +11,7 @@ import logging
 from dataclasses import asdict, dataclass, field
 
 from app.agent import figures
+from app.agent.meter import TokenMeter
 from app.agent.plan import FINISH_PLAN, UPDATE_PLAN, PlanItem, WorkPlan, update_plan
 from app.agent.tools import TOOLS, AgentState, log_check_disputes, run_tool
 from app.domain.diagnostic_rules import assess
@@ -68,7 +69,7 @@ PLAN_PROMPT = """Ты готовишь рабочий план для механ
 1. Первым же ответом, одновременно: update_plan(section="tools", preliminary=true), update_plan(section="materials", preliminary=true) и update_plan(section="prep", preliminary=true) — что подготовить и как подготовить машину и рабочее место (заглушить двигатель, остудить, подставить упоры и т.п.), по инженерному опыту, коротко, без чисел; и search_manual по процедуре проверки этого узла.
 2. Найди в руководстве процедуру проверки/регулировки/ремонта именно этого узла (несколько запросов словами руководства). Оглавление и общий раздел ТО не годятся.
 3. disassembly — что снять или разобрать, чтобы добраться до узла (из руководства с ref и quote, если есть; иначе preliminary без чисел).
-4. Шаги: update_plan(section="steps", preliminary=false) с ref и дословной quote, по порядку. Если в шаге есть замер с нормой из фрагмента — укажи measure (name, unit, min/max). Шаги добавляй партиями по мере нахождения, не жди конца. Сразу после первой партии шагов — quality и aftercare (п. 6–7), потом уточняй. Если пункт отклонён — исправь один раз или пропусти, не повторяй.
+4. Шаги: update_plan(section="steps", preliminary=false) с ref и дословной quote. Порядок шагов: если руководство задаёт обязательную последовательность (разборка и сборка, регулировка по порядку цилиндров, затяжка в определённом порядке, проверка после регулировки) — сохраняй её как есть. Если шаги не зависят друг от друга (например, разные проверки причины), ставь их от простого к сложному: сначала осмотр и проверки без разборки и без инструмента, потом замеры инструментом, потом то, что требует снятия деталей, разборка и замена — в конце. Если в шаге есть замер с нормой из фрагмента — укажи measure (name, unit, min/max). Шаги добавляй партиями по мере нахождения, не жди конца. Сразу после первой партии шагов — quality и aftercare (п. 6–7), потом уточняй. Если пункт отклонён — исправь один раз или пропусти, не повторяй.
 5. Если руководство называет конкретный инструмент, приспособления, запчасти или меры безопасности — добавь их с preliminary=false (ref, quote); если это уточняет предварительный список, замени раздел (replace=true).
 6. quality — контрольный список проверки после работ: все работы выполнены, детали и узлы установлены правильно, соединения и крепления проверены (моменты затяжки — только из руководства), не осталось посторонних предметов, двигатель готов к запуску. Пункты из руководства — с ref; общие — preliminary без чисел.
 7. aftercare — рекомендации после ремонта: на какие узлы и параметры смотреть, признаки неудачного ремонта или повторной неисправности, что контролировать в первую очередь, через какой пробег перепроверить, профилактика. Пробег, интервалы и нормы — только из руководства (ищи обкатку, ТО, периодичность) с ref; если в руководстве нет — пиши без чисел, preliminary.
@@ -89,9 +90,13 @@ class Work:
     task: asyncio.Task | None = None
     cost_usd: float = 0.0
     lang: str = "ru"
+    last_tokens: dict | None = None
 
     def emit(self, event: dict) -> None:
-        self.log.append(event)
+        if event["type"] == "tokens":  # only the latest counts: kept aside, not in the replayed history
+            self.last_tokens = event
+        else:
+            self.log.append(event)
         for q in self.subscribers:
             q.put_nowait(event)
 
@@ -127,7 +132,7 @@ async def rebuild(work_id: str) -> None:
     if work.task and not work.task.done():
         return
     work.plan = work.state.plan = WorkPlan()
-    work.log, work.cost_usd = [], 0.0
+    work.log, work.cost_usd, work.last_tokens = [], 0.0, None
     store.update_work_data(work_id, progress={})
     work.emit_plan()
     work.task = asyncio.create_task(_build(work))
@@ -164,10 +169,10 @@ async def start(vehicle_id: str, session_id: str, lang: str = "ru") -> str:
     return conv_id
 
 
-async def illustrate(work: Work, items: list[PlanItem]) -> None:
+async def illustrate(work: Work, items: list[PlanItem], meter: TokenMeter | None = None) -> None:
     """The model picks a drawing for each new step (or none); the plan updates when it is done."""
     picks, usage = await figures.pick([(str(i.id), i.text + (f" — «{i.quote}»" if i.quote else ""), i.manual_id, i.pdf_page)
-                                       for i in items if i.manual_id and i.pdf_page])
+                                       for i in items if i.manual_id and i.pdf_page], meter, work.emit)
     work.cost_usd += usage.get("cost") or 0.0
     for i in items:
         if pick := picks.get(str(i.id)):
@@ -178,6 +183,7 @@ async def illustrate(work: Work, items: list[PlanItem]) -> None:
 
 async def _build(work: Work) -> None:
     state, plan = work.state, work.plan
+    meter = TokenMeter(work.emit)  # ↑↓ tokens of the whole build, live
     try:
         d = await MockMLClient().diagnose(DiagnoseRequest(vehicle_id=state.vehicle.vehicle_id, session_id=state.session_id))
         state.diagnosis = d
@@ -204,7 +210,7 @@ async def _build(work: Work) -> None:
         nudges = 2
         for _ in range(MAX_ROUNDS):
             work.emit({"type": "thinking"})
-            message, usage = await llm.chat(messages, PLAN_TOOLS)
+            message, usage = await meter.call(llm, messages, PLAN_TOOLS)
             work.cost_usd += usage.get("cost") or 0.0
             messages.append(message)
             calls = message.get("tool_calls") or []
@@ -235,7 +241,7 @@ async def _build(work: Work) -> None:
                     log.info("plan %s %s: +%s, rejected %s", work.conv_id[:8], args.get("section"),
                              result.get("accepted"), result.get("rejected"))
                     if added := [i for i in plan.steps if i.id not in before]:
-                        drawing.append(asyncio.create_task(illustrate(work, added)))
+                        drawing.append(asyncio.create_task(illustrate(work, added, meter)))
                     work.emit_plan()
                 elif name == "finish_plan":
                     plan.note, plan.status = str(args.get("note", "")), "ready"
@@ -276,7 +282,7 @@ async def _build(work: Work) -> None:
         plan.status, plan.note = "failed", "Не удалось собрать план."
     finally:
         work.emit_plan()
-        work.emit({"type": "done", "cost_usd": round(work.cost_usd, 6)})
+        work.emit({"type": "done", "cost_usd": round(work.cost_usd, 6), "tokens": meter.totals()})
 
 
 def in_norm(measure: dict | None, value: str) -> bool | None:

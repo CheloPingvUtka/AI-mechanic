@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     stt_model: str = "google/gemini-3.5-flash-lite"  # speech recognition: audio in, text out
     tts_model: str = "openai/gpt-audio"  # reads Uzbek and Korean verbatim
     tts_model_ru: str = "openai/gpt-audio-mini"  # cheaper; verbatim in Russian, paraphrases Uzbek
-    llm_max_tokens: int = 4000  # one call; caps cost and latency if the model runs away
+    llm_max_tokens: int = 16000  # one call, reasoning included; caps cost and latency if the model runs away
+    llm_reasoning_effort: str = "high"  # OpenRouter reasoning effort: high | medium | low | "" (off)
     tessdata_dir: str = ""  # folder with rus.traineddata, if not in the system tessdata
     data_dir: str = "data"  # SQLite + photos (repair sessions, service book); outside Git
 

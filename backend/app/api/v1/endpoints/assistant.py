@@ -12,6 +12,15 @@ from app.services.agent_service import AgentService
 
 router = APIRouter()
 log = logging.getLogger("uvicorn.error")
+PING_SECONDS = 5  # the UI shows «нет связи» when nothing, not even a ping, came for a while
+
+
+async def next_event(queue: asyncio.Queue) -> dict:
+    """The next event, or a ping when the agent has been quiet (e.g. a long model call)."""
+    try:
+        return await asyncio.wait_for(queue.get(), PING_SECONDS)
+    except TimeoutError:
+        return {"type": "ping"}
 
 
 def error_status(exc: Exception) -> tuple[int, str] | None:
@@ -58,7 +67,7 @@ async def chat_stream(payload: ChatRequest):
 
     async def events():
         while True:
-            event = await queue.get()
+            event = await next_event(queue)
             yield f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
             if event["type"] in ("done", "error"):
                 await task

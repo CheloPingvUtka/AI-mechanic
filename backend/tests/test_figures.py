@@ -14,7 +14,7 @@ def test_model_choice_is_mapped_to_page_and_figure_and_nonsense_is_none():
 def test_one_call_per_page_then_a_second_look_elsewhere_and_cached(monkeypatch):
     calls = []
 
-    async def fake_ask(llm, manual_id, cands, items):
+    async def fake_ask(llm, manual_id, cands, items, meter=None, emit=None, second=False):
         calls.append((cands[0][0], [k for k, _ in items]))
         # near page 31 only step 1 fits; the second look (page 80) finds one for step 2
         return {k: figures.Pick(cands[0][0], 0) if (k == "1" or cands[0][0] == 80) else None for k, _ in items}, \
@@ -35,3 +35,23 @@ def test_one_call_per_page_then_a_second_look_elsewhere_and_cached(monkeypatch):
 
 def test_step_key_ignores_citations_bold_and_punctuation():
     assert step_key("**Снять** крышку головки (236-3902150-Б РЭ, стр. 31).") == step_key("Снять крышку головки")
+
+
+def test_meter_sums_exact_usage_and_counts_reasoning():
+    from app.agent.meter import TokenMeter
+
+    class LLM:
+        async def chat(self, messages, tools, tool_choice="auto", on_tokens=None):
+            on_tokens(50)  # streaming estimate
+            return {"role": "assistant", "content": "ok"}, {
+                "prompt_tokens": 1000, "prompt_tokens_details": {"cached_tokens": 400},
+                "completion_tokens": 300, "completion_tokens_details": {"reasoning_tokens": 200}}
+
+    events = []
+    meter = TokenMeter(events.append)
+    for _ in range(2):
+        asyncio.run(meter.call(LLM(), [{"role": "user", "content": "x" * 300}], None))
+    assert events[-1] == {"type": "tokens", "up": 1200, "down": 600, "reasoning": 400}  # cached prompt not counted
+    assert any(e["down"] == 350 for e in events)  # 300 done + 50 still streaming in the second call
+    ups = [e["up"] for e in events]
+    assert ups == sorted(ups)  # never goes back

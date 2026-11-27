@@ -7,6 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 
+from app.agent.meter import TokenMeter
 from app.integrations.llm_client import LLMClient, LLMError
 from app.rag import pages
 from app.rag.manuals import BY_ID
@@ -77,19 +78,29 @@ def found_elsewhere(manual_id: str, page: int, text: str) -> list[tuple[int, int
     return out[:MAX_CANDIDATES]
 
 
-async def _ask(llm: LLMClient, manual_id: str, cands: list[tuple[int, int]], items: list[tuple[str, str]]) -> tuple[dict, dict]:
-    """Shows the model the steps and the candidate drawings; returns its picks."""
+async def _ask(llm: LLMClient, manual_id: str, cands: list[tuple[int, int]], items: list[tuple[str, str]],
+               meter: TokenMeter | None = None, emit=None, second: bool = False) -> tuple[dict, dict]:
+    """Shows the model the steps and the candidate drawings; returns its picks. Tells the UI what it looks at."""
+    look = f"{manual_id}:{cands[0][0]}:{items[0][0]}:{int(second)}"
+    if emit:
+        emit({"type": "figures_look", "id": look, "manual_id": manual_id, "manual": BY_ID[manual_id].short if manual_id in BY_ID else manual_id,
+              "pages": sorted({p for p, _ in cands}), "count": len(cands), "steps": len(items), "second": second})
     content: list[dict] = [{"type": "text", "text": "Шаги:\n" + "\n".join(f"{key}: {text}" for key, text in items)}]
     for n, (p, i) in enumerate(cands, 1):
         caption = await asyncio.to_thread(pages.caption, manual_id, p, i)
         png = await asyncio.to_thread(pages.page_png, manual_id, p, 512, i)
         content += [{"type": "text", "text": f"Рисунок {n} (стр. {p})" + (f", подпись: {caption}" if caption else "")},
                     {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png).decode()}}]
-    message, usage = await llm.chat([{"role": "system", "content": PROMPT}, {"role": "user", "content": content}], None)
-    return _parse(message.get("content") or "", [key for key, _ in items], cands), usage
+    messages = [{"role": "system", "content": PROMPT}, {"role": "user", "content": content}]
+    message, usage = await (meter.call(llm, messages, None) if meter else llm.chat(messages, None))
+    picks = _parse(message.get("content") or "", [key for key, _ in items], cands)
+    if emit:
+        emit({"type": "figures_seen", "id": look, "picked": sum(1 for p in picks.values() if p)})
+    return picks, usage
 
 
-async def pick(steps: list[tuple[str, str, str, int]]) -> tuple[dict[str, Pick | None], dict]:
+async def pick(steps: list[tuple[str, str, str, int]], meter: TokenMeter | None = None,
+               emit=None) -> tuple[dict[str, Pick | None], dict]:
     """steps: (key, text, manual_id, pdf_page). Round 1: drawings near the cited page, one model call per page.
     Round 2, for steps nothing fitted: drawings on other pages the manual search finds for that step.
     Returns picks (None = no fitting drawing) and the summed usage."""
@@ -104,8 +115,9 @@ async def pick(steps: list[tuple[str, str, str, int]]) -> tuple[dict[str, Pick |
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "cost": 0.0}
     llm = LLMClient()
 
-    async def run(jobs: list[tuple[str, list, list]]) -> None:
-        results = await asyncio.gather(*(_ask(llm, m, cands, items) for m, cands, items in jobs), return_exceptions=True)
+    async def run(jobs: list[tuple[str, list, list]], second: bool = False) -> None:
+        results = await asyncio.gather(*(_ask(llm, m, cands, items, meter, emit, second) for m, cands, items in jobs),
+                                       return_exceptions=True)
         for (manual_id, _, items), result in zip(jobs, results):
             if isinstance(result, (LLMError, OSError, LookupError)):
                 log.warning("figure pick in %s failed: %s", manual_id, result)
@@ -133,7 +145,7 @@ async def pick(steps: list[tuple[str, str, str, int]]) -> tuple[dict[str, Pick |
         if out.get(key) is None and len(jobs) < MAX_SECOND:
             if cands := await asyncio.to_thread(found_elsewhere, manual_id, page, text):
                 jobs.append((manual_id, cands, [(key, text)]))
-    await run(jobs)
+    await run(jobs, second=True)
     for key, text, manual_id, page in todo:
         out.setdefault(key, None)
         if key in answered:
