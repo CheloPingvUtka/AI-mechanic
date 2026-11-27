@@ -57,3 +57,32 @@ def test_finish_writes_defect_repair_and_aftercare(monkeypatch):
     assert store.load_work("w2")["status"] == "done"
     agent_service.CONVERSATIONS.clear()
     plan_service.WORKS.clear()
+
+
+def test_plan_left_building_by_a_restart_is_marked_failed(monkeypatch):
+    monkeypatch.setattr(plan_service, "JsonVehicleCatalog", FakeCatalog)
+    state = agent_service.AgentState(vehicle=vehicle(), session_id="S-0005", conversation_id="w3")
+    state.plan = WorkPlan()  # status "building" when the server stopped
+    agent_service.save_conversation("w3", agent_service.Conversation(state=state), status="active")
+    agent_service.CONVERSATIONS.clear()
+    plan_service.WORKS.clear()
+
+    work = plan_service.get_work("w3")
+    assert work.plan.status == "failed" and work.log[-1]["type"] == "done"
+    assert store.load_work("w3")["data"]["plan"]["status"] == "failed"
+    agent_service.CONVERSATIONS.clear()
+    plan_service.WORKS.clear()
+
+
+def test_opening_the_same_check_again_reuses_its_work(monkeypatch):
+    import asyncio
+    monkeypatch.setattr(plan_service, "JsonVehicleCatalog", FakeCatalog)
+    state = agent_service.AgentState(vehicle=vehicle(), session_id="S-0005", conversation_id="w4")
+    state.plan = WorkPlan(status="ready", steps=[PlanItem(text="Шаг", preliminary=False)])
+    agent_service.save_conversation("w4", agent_service.Conversation(state=state), status="active")
+    agent_service.CONVERSATIONS.clear()
+    plan_service.WORKS.clear()
+
+    assert asyncio.run(plan_service.start("M333YK47", "S-0005", "ru")) == "w4"
+    agent_service.CONVERSATIONS.clear()
+    plan_service.WORKS.clear()

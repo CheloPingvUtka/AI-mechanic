@@ -46,3 +46,12 @@ def test_tolerance_bounds_count_as_from_the_fragment():
     assert update_plan(plan, hits, "steps", False, [item])["accepted"] == 1
     item["measure"] = {"name": "Давление", "unit": "МПа", "min": 22.6, "max": 25}
     assert update_plan(plan, hits, "steps", False, [{**item, "text": "Ещё раз"}])["rejected"]
+
+
+def test_items_sent_as_strings_are_read_not_crashed_on():
+    plan = WorkPlan()
+    update_plan(plan, HITS, "tools", True, ["Манометр", {"text": "Ключи"}, 5])
+    update_plan(plan, HITS, "materials", True, '[{"text": "Ветошь"}]')
+    update_plan(plan, HITS, "prep", True, ['[{"text": "Заглушить двигатель"}, {"text": "Остудить"}]'])
+    assert [i.text for i in plan.tools] == ["Манометр", "Ключи"] and [i.text for i in plan.materials] == ["Ветошь"]
+    assert [i.text for i in plan.prep] == ["Заглушить двигатель", "Остудить"]

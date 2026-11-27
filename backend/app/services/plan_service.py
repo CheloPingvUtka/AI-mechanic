@@ -111,8 +111,25 @@ def get_work(work_id: str) -> Work | None:
     if conv is None or conv.state.plan is None:
         return None
     work = WORKS[work_id] = Work(conv_id=work_id, conv=conv, state=conv.state, plan=conv.state.plan, lang=conv.lang)
+    if work.plan.status == "building":  # the server stopped while it was being built
+        work.plan.status, work.plan.note = "failed", "Сборка плана прервалась — соберите заново."
+        work.emit_plan()
     work.log = [{"type": "plan", "plan": work.plan.snapshot()}, {"type": "done", "cost_usd": 0}]
     return work
+
+
+async def rebuild(work_id: str) -> None:
+    """Builds the plan of a work again from scratch (after a failure); ticks of the old plan are dropped."""
+    work = get_work(work_id)
+    if work is None:
+        raise LookupError(f"Нет работы {work_id}")
+    if work.task and not work.task.done():
+        return
+    work.plan = work.state.plan = WorkPlan()
+    work.log, work.cost_usd = [], 0.0
+    store.update_work_data(work_id, progress={})
+    work.emit_plan()
+    work.task = asyncio.create_task(_build(work))
 
 
 def book_check(d, verdict: dict, vehicle_id: str, work_id: str) -> None:
@@ -127,7 +144,12 @@ def book_check(d, verdict: dict, vehicle_id: str, work_id: str) -> None:
 
 
 async def start(vehicle_id: str, session_id: str, lang: str = "ru") -> str:
-    """Creates (or reuses) the conversation for this check and starts building its plan."""
+    """Creates (or reuses) the conversation for this check and starts building its plan.
+    An unfinished work for the same check and language is reused: opening the check again costs nothing."""
+    for saved in store.list_works(vehicle_id, "active"):
+        work = get_work(saved["id"]) if saved["session_id"] == session_id and saved["lang"] == lang else None
+        if work and work.plan.status != "failed":
+            return work.conv_id
     service = AgentService()
     conv_id, conv = service._conversation(ChatRequest(vehicle_id=vehicle_id, session_id=session_id, message=".",
                                                       lang=lang))
@@ -165,6 +187,7 @@ async def _build(work: Work) -> None:
         )}, {"role": "user", "content": "Составь рабочий план."}]
         work.emit_plan()
         llm = LLMClient()
+        nudges = 2
         for _ in range(MAX_ROUNDS):
             work.emit({"type": "thinking"})
             message, usage = await llm.chat(messages, PLAN_TOOLS)
@@ -174,7 +197,15 @@ async def _build(work: Work) -> None:
             if not calls:
                 log.info("plan %s: model stopped without finish_plan: %s", work.conv_id[:8],
                          (message.get("content") or "")[:300])
-                break
+                if not nudges:
+                    break
+                nudges -= 1  # it sometimes stops mid-way with an empty message: ask it to go on
+                messages.append({"role": "user", "content": (
+                    f"Ты остановился, не вызвав finish_plan. В плане шагов: {len(plan.steps)}, "
+                    f"проверка: {len(plan.quality)}, рекомендации: {len(plan.aftercare)}. Продолжай по порядку: "
+                    "шаги из найденных фрагментов (update_plan, section=steps), затем quality и aftercare, "
+                    "в конце finish_plan. Если процедуры для этого узла в руководстве нет — сразу finish_plan с объяснением.")})
+                continue
             images = []
             for call in calls:
                 name, raw = call["function"]["name"], call["function"].get("arguments") or "{}"
@@ -215,7 +246,8 @@ async def _build(work: Work) -> None:
                 update_plan(plan, state.hits, section, True, [{"text": t} for t in texts[work.lang]])
         if plan.status != "ready":
             plan.status = "ready"
-            plan.note = plan.note or "План собран по найденным страницам руководства."
+            plan.note = plan.note or ("План собран по найденным страницам руководства." if plan.steps
+                                      else "Процедура для этого узла в руководстве не найдена.")
     except (LLMError, OSError, LookupError) as exc:
         log.warning("plan build failed: %s", exc)
         plan.status, plan.note = "failed", f"Не удалось собрать план: {exc}"

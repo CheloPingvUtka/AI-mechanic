@@ -8,7 +8,8 @@
 
 | Метод | Путь | Что делает |
 |---|---|---|
-| POST | `/work` `{vehicle_id, session_id, lang}` | начать работу по проверке → `{work_id}`; план строится в фоне |
+| POST | `/work` `{vehicle_id, session_id, lang}` | начать работу по проверке → `{work_id}`; план строится в фоне. Если по этой проверке уже есть незавершённая работа на том же языке — возвращается она (повторно не платим) |
+| POST | `/work/{id}/rebuild` | собрать план заново, если `plan.status = failed` (старые отметки сбрасываются) |
 | GET | `/work?status=active[&vehicle_id=]` | незавершённые работы: `[{id, vehicle_id, session_id, status, lang, created_at, updated_at, diagnosis, steps_total, steps_done, stage}]` |
 | GET | `/work/{id}` | всё, чтобы продолжить: `{work_id, vehicle_id, session_id, status, lang, plan, progress, diagnosis, chat, created_at, updated_at}` |
 | GET | `/work/{id}/stream` | SSE: `plan` (снимок), `thinking`/`tool`/`tool_result`, `done` |
@@ -28,6 +29,7 @@ quality                                        — этап 3 «Проверка
 aftercare                                      — «После ремонта» (рекомендации)
 conflicts: [{note, sides: [{manual_id, manual, pdf_page, quote}], official: [{manual, url}]}]
 status: building | ready | failed, note, note_code, version
+(failed — в т.ч. если сервер перезапустили во время сборки; тогда показать «Собрать заново»)
 ```
 
 Пункт (`PlanItem`): `{id, text, preliminary, ref, quote, manual_id, manual, pdf_page, figures, measure: {name, unit, min, max} | null}`. `preliminary=true` — по опыту, не из руководства (показывать как «предварительно»). Старые сохранённые планы могут не иметь новых разделов — считать пустыми.

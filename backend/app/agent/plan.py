@@ -8,6 +8,7 @@ Confirmed items and every step need a verbatim quote from a retrieved fragment; 
 text and the measurement range must come from that fragment.
 """
 import itertools
+import json
 import time
 from dataclasses import asdict, dataclass, field
 
@@ -176,12 +177,29 @@ def check_item(raw: dict, preliminary: bool, section: str, hits: dict) -> tuple[
                     manual=hit.short, pdf_page=hit.pdf_page, measure=measure, figures=figures), None
 
 
+def _raw_items(items) -> list[dict]:
+    """The model sometimes sends the list, or items of it, as JSON strings, or bare texts instead of {"text": ...}."""
+    if isinstance(items, str):
+        items = [items]
+    out = []
+    for raw in items if isinstance(items, list) else []:
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                parsed = {"text": raw}
+            out.extend(_raw_items(parsed) if isinstance(parsed, list) else [parsed] if isinstance(parsed, dict) else [])
+        elif isinstance(raw, dict):
+            out.append(raw)
+    return out
+
+
 def update_plan(plan: WorkPlan, hits: dict, section: str, preliminary: bool, items: list[dict],
                 replace: bool = False) -> dict:
     if section not in SECTIONS:
         return {"error": f"Нет раздела {section}"}
     accepted, rejected = [], []
-    for raw in items or []:
+    for raw in _raw_items(items):
         item, why = check_item(raw, preliminary, section, hits)
         if item:
             accepted.append(item)

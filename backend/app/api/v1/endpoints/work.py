@@ -70,6 +70,15 @@ def finish_work(work_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post("/{work_id}/rebuild", summary="Собрать план заново (если сборка не удалась)")
+async def rebuild_work(work_id: str):
+    try:
+        await plan_service.rebuild(work_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
+
+
 @router.get("/{work_id}/stream", summary="План и ход его сборки (SSE): всё с начала, потом вживую")
 async def stream_work(work_id: str):
     work = plan_service.get_work(work_id)
