@@ -11,6 +11,7 @@ import TicketCard from "../session/TicketCard";
 import PlanPanel from "../plan/PlanPanel";
 import { usePlan } from "../plan/usePlan";
 import ChatPanel from "../chat/ChatPanel";
+import VehicleCard from "../../components/ui/VehicleCard";
 
 /** Detailed workspace (desktop / chief mechanic): everything on one screen. */
 export default function MechanicPage() {
@@ -32,7 +33,8 @@ export default function MechanicPage() {
         <p className="muted">{t("detail.subtitle", "Проверка двигателя и дальнейшие действия по ремонту")}</p></div></div>
 
       <section className="panel vehicle-panel">
-        <div className="panel-heading"><div><p className="eyebrow">{t("selectedVehicle", "Транспортное средство")}</p><h2>{vehicle.vehicle_id} · {vehicle.garage_no}</h2></div></div>
+        <div className="panel-heading"><div><p className="eyebrow">{t("selectedVehicle", "Транспортное средство")}</p></div></div>
+        <VehicleCard className="selected-vehicle-card" vehicle={vehicle} labels={{ engine: t("engine"), garageNo: t("garageNo") }}/>
         <select className="vehicle-select" value={vehicle.vehicle_id} onChange={e => setParams({ vehicle: e.target.value })} aria-label={t("selectedVehicle", "Транспортное средство")}>
           {fleet.map(v => <option key={v.vehicle_id} value={v.vehicle_id}>{v.vehicle_id} · {v.garage_no} · {vehicleName(v)} · {v.engine_model}</option>)}
         </select>
