@@ -11,6 +11,7 @@ import logging
 from dataclasses import asdict, dataclass, field
 
 from app.agent import figures
+from app.agent.checks import rounding_only
 from app.agent.meter import TokenMeter
 from app.agent.plan import FINISH_PLAN, UPDATE_PLAN, PlanItem, WorkPlan, update_plan
 from app.agent.tools import TOOLS, AgentState, log_check_disputes, run_tool
@@ -74,7 +75,7 @@ PLAN_PROMPT = """Ты готовишь рабочий план для механ
 6. quality — контрольный список проверки после работ: все работы выполнены, детали и узлы установлены правильно, соединения и крепления проверены (моменты затяжки — только из руководства), не осталось посторонних предметов, двигатель готов к запуску. Пункты из руководства — с ref; общие — preliminary без чисел.
 7. aftercare — рекомендации после ремонта: на какие узлы и параметры смотреть, признаки неудачного ремонта или повторной неисправности, что контролировать в первую очередь, через какой пробег перепроверить, профилактика. Пробег, интервалы и нормы — только из руководства (ищи обкатку, ТО, периодичность) с ref; если в руководстве нет — пиши без чисел, preliminary.
 8. Чтобы шаг был нагляднее, можешь открыть страницу через view_page и убедиться, что на ней есть рисунок этого узла.
-8а. Если фрагменты руководств расходятся (разные нормы или порядок для одного и того же) — report_contradiction с цитатами обеих сторон; в шаге напиши «есть расхождение в руководствах — см. предупреждение», норму не выбирай.
+8а. Если фрагменты руководств расходятся (разные нормы или порядок для одного и того же) — report_contradiction с цитатами обеих сторон и severity. Важность: critical — если расхождение меняет то, что делает механик (нормы отличаются больше чем на 5 %, другой порядок работ, одно руководство запрещает или требует то, чего нет в другом); minor — если по сути одно и то же (та же норма в других единицах или округлённая при пересчёте: 5,6…6,2 кгс·м = 54,9…58,8 и 54,9…60,8 Н·м — это не противоречие; разные формулировки). Для critical в этом шаге напиши «есть расхождение в руководствах — см. предупреждение», норму не выбирай; другие шаги этим не помечай. Для minor шаг пиши как обычно.
 9. В конце — finish_plan с короткой запиской. Если процедуры для этого узла в руководстве на этот двигатель нет, шаги не придумывай: finish_plan и объясни это.
 Тексты пунктов пиши коротко и простыми словами: механик читает с телефона. {lang_rule} Поле quote — всегда дословно из фрагмента, по-русски."""
 
@@ -117,6 +118,8 @@ def get_work(work_id: str) -> Work | None:
     if conv is None or conv.state.plan is None:
         return None
     work = WORKS[work_id] = Work(conv_id=work_id, conv=conv, state=conv.state, plan=conv.state.plan, lang=conv.lang)
+    for c in work.plan.conflicts:  # saved before conflicts had a severity
+        c.setdefault("severity", "minor" if rounding_only([s["quote"] for s in c["sides"]]) else "critical")
     if work.plan.status == "building":  # the server stopped while it was being built
         work.plan.status, work.plan.note = "failed", "Сборка плана прервалась — соберите заново."
         work.emit_plan()

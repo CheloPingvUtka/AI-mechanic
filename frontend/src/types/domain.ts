@@ -101,6 +101,7 @@ export interface Conflict {
   note: string;
   sides: { manual_id: string; manual: string; pdf_page: number; quote: string }[];
   official: { manual: string; url: string }[];
+  severity?: "critical" | "minor";  // minor: the same norm rounded or in other units
 }
 
 export type Stage = "prep" | "work" | "check" | "after";

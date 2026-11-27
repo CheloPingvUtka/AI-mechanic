@@ -55,3 +55,15 @@ def test_items_sent_as_strings_are_read_not_crashed_on():
     update_plan(plan, HITS, "prep", True, ['[{"text": "Заглушить двигатель"}, {"text": "Остудить"}]'])
     assert [i.text for i in plan.tools] == ["Манометр", "Ключи"] and [i.text for i in plan.materials] == ["Ветошь"]
     assert [i.text for i in plan.prep] == ["Заглушить двигатель", "Остудить"]
+
+
+
+def test_rounded_unit_conversion_is_not_a_contradiction():
+    from app.agent.checks import rounding_only
+    a = "15. Затянуть болты крепления звездочек распределительных валов окончательно моментом 54,9...58,8 Н·м (5,6...6,2 кгс·м)."
+    b = "Болты крепления звездочек распределительных валов 54,9...60,8 (5,6...6,2)"
+    assert rounding_only([a, b])
+    assert rounding_only(["моментом 118–147 Н·м (12–15 кгс·м)", "120–150 Н·м (12–15 кгс·м)"])
+    assert not rounding_only(["зазор 0,25 мм", "зазор 0,30 мм"])  # 20 %: a real difference
+    # same numbers, different meaning: up to the model, not to rounding
+    assert not rounding_only(["в первые 15 минут после остановки", "не ранее чем через 15 мин после остановки"])

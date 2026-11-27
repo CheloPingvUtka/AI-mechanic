@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { api, formatDate, useLoad, vehicleName } from "../../lib/api";
 import type { Stage } from "../../types/domain";
 import { PageViewer, type PageRef } from "../../components/ui/SourceCards";
-import Conflicts from "../../components/ui/Conflicts";
+import Conflicts, { concerns } from "../../components/ui/Conflicts";
 import VehiclePicker from "./VehiclePicker";
 import { LiveProgress } from "../../components/ui/AgentProgress";
 import { useCheckSession } from "../session/useCheckSession";
@@ -361,7 +361,7 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
         <StepCard key={step.id} item={step} n={at + 1} state={p.stepState(step.id)} big isNew={p.isNew(step)}
           setStep={patch => p.setStep(step.id, patch)} onOpen={onOpen}/>
       </ol>
-      <Conflicts items={plan.conflicts} onOpen={onOpen}/>
+      <Conflicts items={plan.conflicts?.filter(c => concerns(c, step))} onOpen={onOpen}/>
       <button className="button button-light work-ask" onClick={onAsk} disabled={busy}>
         <MessageCircle size={22}/>{t("work.askStep", "Спросить про этот шаг")}</button>
     </>}

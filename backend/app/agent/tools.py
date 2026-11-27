@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import httpx
 from pydantic import ValidationError
 
-from app.agent.checks import numbers, quote_in
+from app.agent.checks import numbers, quote_in, rounding_only
 from app.agent.plan import WorkPlan
 from app.domain.diagnostic_rules import (
     OPERATION_BAN,
@@ -66,13 +66,18 @@ TOOLS = [
             "name": "report_contradiction",
             "description": (
                 "Если найденные фрагменты руководств противоречат друг другу (разные нормы, порядок, допуски для "
-                "одного и того же) — сообщи: две и более дословные цитаты с ref и что именно расходится. "
-                "Механик увидит оба варианта; случай попадёт в журнал спорных ситуаций."
+                "одного и того же) — сообщи: две и более дословные цитаты с ref, что именно расходится и насколько это "
+                "важно (severity). Случай попадёт в журнал спорных ситуаций; важные механик увидит на нужных шагах."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "note": {"type": "string", "description": "Что расходится, одной фразой."},
+                    "severity": {"type": "string", "enum": ["critical", "minor"], "description": (
+                        "critical — меняет то, что делает механик: разные нормы больше чем на 5 %, разный порядок работ, "
+                        "одно руководство запрещает или требует то, чего нет в другом. minor — по сути одно и то же: "
+                        "та же норма в других единицах или округлённая при пересчёте (5,6…6,2 кгс·м = 54,9…60,8 Н·м), "
+                        "разные формулировки.")},
                     "sides": {
                         "type": "array",
                         "items": {
@@ -308,7 +313,7 @@ async def check_photo(state: AgentState, shows: str, matches: str, reason: str) 
     return {"ok": True}
 
 
-async def report_contradiction(state: AgentState, note: str, sides: list[dict]) -> dict:
+async def report_contradiction(state: AgentState, note: str, sides: list[dict], severity: str = "critical") -> dict:
     verified, errors = [], []
     for side in sides or []:
         hit = state.hits.get(side.get("ref", ""))
@@ -319,10 +324,19 @@ async def report_contradiction(state: AgentState, note: str, sides: list[dict]) 
                              "quote": side["quote"]})
     if len(verified) < 2:
         return {"error": "Нужны минимум две дословные цитаты из найденных фрагментов. " + "; ".join(errors)}
-    item = {"note": note, "sides": verified}
+    rounding = rounding_only([s["quote"] for s in verified])
+    severity = "minor" if rounding or severity == "minor" else "critical"
+    item = {"note": note, "sides": verified, "severity": severity}
     state.contradictions.append(item)
     store.add_dispute("contradiction", note, state.vehicle.vehicle_id, state.conversation_id or None, item)
-    return {"ok": True, "note": "Покажи механику оба варианта со страницами и посоветуй уточнить у производителя."}
+    if severity == "minor":
+        return {"ok": True, "severity": "minor", "note": (
+            "Записано как мелкое расхождение" + (" (числа отличаются меньше чем на 5 % — это пересчёт единиц или "
+                                                 "округление, норма одна)" if rounding else "") +
+            ". В шагах и ответе его не выделяй и предупреждение не пиши; если нужна норма — дай её по одному "
+            "фрагменту со ссылкой.")}
+    return {"ok": True, "severity": "critical",
+            "note": "Покажи механику оба варианта со страницами и посоветуй уточнить у производителя."}
 
 
 HANDLERS = {

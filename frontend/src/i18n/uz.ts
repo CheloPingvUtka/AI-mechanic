@@ -326,6 +326,9 @@ const uz = {
     count: "Mashinalar: {{n}}",
   },
   conflict: {
+    hide: "Yashirish",
+    minor: "Qo‘llanmalarda mayda farqlar: {{n}} — me’yor bir xil, turlicha yaxlitlangan",
+    hiddenN: "Yashirilgan farqlar: {{n}} — ko‘rsatish",
     ask: "Ishlab chiqaruvchidan aniqlang:",
     title: "Qo‘llanmalarda turlicha yozilgan",
   },

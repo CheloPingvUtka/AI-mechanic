@@ -17,6 +17,34 @@ def numbers(text: str) -> set[str]:
     return {n.replace(",", ".") for n in _NUM.findall(text) if len(n) > 1}
 
 
+ROUNDING = 0.05  # 5,6…6,2 кгс·м is printed as 54,9…58,8 in one place and 54,9…60,8 Н·м in another
+
+
+def _norm_values(text: str) -> list[float]:
+    """Numbers that can be norms: fractions, or whole numbers from 30 up (smaller ones are list items, kgf·m
+    integers that come with their N·m equivalent, counts)."""
+    out = []
+    for n in re.findall(r"\d+(?:[.,]\d+)?", text):
+        v = float(n.replace(",", "."))
+        if "," in n or "." in n or v >= 30:
+            out.append(v)
+    return out
+
+
+def rounding_only(quotes: list[str]) -> bool:
+    """The quotes give the same norms, only rounded differently (e.g. converted from kgf·m to N·m): every value
+    of each quote has one within 5 % in every other, and they are not all identical. Not a real contradiction."""
+    values = [_norm_values(q) for q in quotes]
+    if len(values) < 2 or not all(values):
+        return False
+
+    def near(a: list[float], b: list[float]) -> bool:
+        return all(any(abs(x - y) <= ROUNDING * max(x, y) for y in b) for x in a)
+
+    pairs = [(a, b) for i, a in enumerate(values) for b in values[i + 1:]]
+    return all(near(a, b) and near(b, a) for a, b in pairs) and any(set(a) != set(b) for a, b in pairs)
+
+
 def _squash(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
