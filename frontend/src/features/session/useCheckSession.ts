@@ -23,12 +23,15 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
   const conversation = useRef<string | null>(null);
   const busyRef = useRef(false);
   const context = useRef<ChatBody["context"]>(null);  // set by the work screen: where the mechanic is
+  // Only the latest load may show its result: an answer for the previous vehicle or check that comes late is dropped.
+  const latest = useRef(0);
 
   // New vehicle: latest check selected, everything else starts over.
   useEffect(() => {
     setSessionId(vehicle?.sessions[vehicle.sessions.length - 1].session_id ?? "");
     setResult(null); setTicket(null); setMessages([]); setError(""); setWorkId(null);
     conversation.current = null;
+    latest.current++;
   }, [vehicle?.vehicle_id]);  // eslint-disable-line react-hooks/exhaustive-deps -- a reloaded fleet list is not a new vehicle
 
   const selectSession = useCallback((id: string) => {
@@ -72,17 +75,23 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
   /** Verdict card right away; for an anomaly the work plan starts in the background; the agent explains. */
   async function runDiagnosis(session = sessionId): Promise<Assessment | null> {
     if (!vehicle) return null;
+    // a check of another vehicle (left over from the previous one) is never asked for
+    if (!vehicle.sessions.some(x => x.session_id === session)) session = vehicle.sessions[vehicle.sessions.length - 1]?.session_id ?? "";
+    const id = ++latest.current, stale = () => id !== latest.current;
     setLoading(true); setError(""); setResult(null); setTicket(null); setWorkId(null);
     try {
       const assessment = await api.diagnose(vehicle.vehicle_id, session);
+      if (stale()) return null;
       setResult(assessment);
       if (assessment.status === "anomaly") {
         // Chat shares the plan's conversation, so both see the same manual pages.
         const { work_id } = await api.startWork(vehicle.vehicle_id, session, lang);
+        if (stale()) return null;
         conversation.current = work_id;
         setWorkId(work_id);
         // the same check opened again: its work and chat are reused, nothing is asked twice
         const saved = await api.work(work_id).catch(() => null);
+        if (stale()) return null;
         if (saved?.chat.length) {
           setMessages(saved.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost, figures: m.figures })));
           setTicket([...saved.chat].reverse().find(m => m.ticket)?.ticket ?? null);
@@ -92,27 +101,31 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
       void send(t("chat.explain", "Объясни результат проверки {{s}}", { s: session }), { session });
       return assessment;
     } catch (e) {
-      setError((e as Error).message);
+      if (!stale()) setError((e as Error).message);
       return null;
-    } finally { setLoading(false); }
+    } finally { if (!stale()) setLoading(false); }
   }
 
   /** Back to a saved repair: its check, verdict and chat; no new plan is built. */
   async function resume(workId: string): Promise<string | null> {
     if (!vehicle) return null;
+    const id = ++latest.current, stale = () => id !== latest.current;
     setLoading(true); setError("");
     try {
       const w = await api.work(workId);
+      if (stale()) return null;
       conversation.current = w.work_id;
       setSessionId(w.session_id); setWorkId(w.work_id);
       setMessages(w.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost, figures: m.figures })));
       setTicket([...w.chat].reverse().find(m => m.ticket)?.ticket ?? null);
-      setResult(await api.diagnose(w.vehicle_id, w.session_id));
+      const assessment = await api.diagnose(w.vehicle_id, w.session_id);
+      if (stale()) return null;
+      setResult(assessment);
       return w.session_id;
     } catch (e) {
-      setError((e as Error).message);
+      if (!stale()) setError((e as Error).message);
       return null;
-    } finally { setLoading(false); }
+    } finally { if (!stale()) setLoading(false); }
   }
 
   const createTicket = (confirmWarning = false) =>

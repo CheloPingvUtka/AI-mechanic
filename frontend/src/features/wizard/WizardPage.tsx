@@ -70,7 +70,9 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   }, [vehicle?.vehicle_id, workParam]);  // eslint-disable-line react-hooks/exhaustive-deps
   // Entering the result screen fetches the verdict once (a new check starts a new plan).
   useEffect(() => {
-    if (screen === "result" && vehicle && !workParam && s.sessionId && fetched.current !== vehicle.vehicle_id + s.sessionId) {
+    // (right after switching vehicles the selected check is still the previous vehicle's: wait for the new one)
+    if (screen === "result" && vehicle && !workParam && vehicle.sessions.some(x => x.session_id === s.sessionId)
+        && fetched.current !== vehicle.vehicle_id + s.sessionId) {
       fetched.current = vehicle.vehicle_id + s.sessionId;
       void s.runDiagnosis().then(r => { if (r && speakOn) void voice.speak(verdictLine(t, r)); });
     }

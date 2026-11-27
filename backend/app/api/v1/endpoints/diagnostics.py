@@ -16,6 +16,8 @@ async def run_diagnostics(payload: DiagnoseRequest):
         vehicle = JsonVehicleCatalog().get_vehicle(payload.vehicle_id)
         return {**d.model_dump(), **assess(d, vehicle.fuel if vehicle else None)}
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=exc.response.status_code, detail=exc.response.text) from exc
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"У {payload.vehicle_id} нет проверки {payload.session_id}") from exc
+        raise HTTPException(status_code=502, detail=f"Сервис диагностики ответил ошибкой {exc.response.status_code}") from exc
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail="Сервис диагностики временно недоступен") from exc
