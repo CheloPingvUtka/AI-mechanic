@@ -35,12 +35,16 @@ export function usePlan(workId: string | null) {
       if (p?.stage) setStage(p.stage);
       setFinished(w.status === "done");
     }).catch(() => { /* new work: nothing saved yet */ }).finally(() => { if (live) restored.current = true; });
+    let initial = true;
     const stop = watchWork(workId, p => {
       const now = Date.now();
       for (const i of allItems(p)) {
-        // the first batch is not "new"; later additions are highlighted for a while
-        if (!firstSeen.current.has(i.id)) firstSeen.current.set(i.id, p.version <= 2 ? 0 : now);
+        // what is there when the plan opens is not "new"; later additions are highlighted for a while
+        // (added_at guards against the replay of an old build's history)
+        const recent = !initial && p.version > 2 && (!i.added_at || now / 1000 - i.added_at < NEW_FOR_MS / 1000);
+        if (!firstSeen.current.has(i.id)) firstSeen.current.set(i.id, recent ? now : 0);
       }
+      initial = false;
       setPlan(p);
     }, e => setEvents(ev => [...ev, e]));
     return () => { live = false; stop(); };

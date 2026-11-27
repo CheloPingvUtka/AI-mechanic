@@ -118,7 +118,7 @@
 .work-stage>svg{flex:none}.work-stage span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .work-stage small{font-size:14px;font-weight:700;color:#71808b;font-variant-numeric:tabular-nums}
 .work-stage.current{background:#172b3a;color:#fff;box-shadow:0 2px 8px #14202a33}.work-stage.current>svg{color:#f28a35}.work-stage.current small{color:#c6d2da}
-.work-stage.passed>svg{color:#238459}.work-stage:disabled{opacity:.45;cursor:default}
+.work-stage.passed>svg{color:#238459}.work-stage.skipped>svg{color:#d08a00}.work-stage.skipped small{color:#b06f00}.work-stage:disabled{opacity:.45;cursor:default}
 @container (max-width:640px){.work-stage{flex-direction:column;gap:2px;min-height:64px;font-size:13px;padding:4px 1px}.work-stage small{display:none}}
 .prep-danger h3{color:#c3443e!important}.prep-danger .prep-item{border-color:#f3c9c6}
 .work-status{display:flex;gap:14px;align-items:flex-start;padding:16px;border-radius:14px;background:#eaf2f8;color:#1f4f73;border:2px solid #c9dcec}
@@ -340,3 +340,14 @@
 .resume-bar,.resume-count,.resume-go{grid-column:1/-1}.resume-go{min-height:52px}
 @media(max-width:760px){.wizard-search input{font-size:17px}}
 .attn-row.state-normal{border-left-color:#35b77a}
+/* Phone: an app, not a long page. The top bar stays, only the content scrolls (the dock sticks to its bottom),
+   the page itself never moves; sheets and the page viewer scroll inside themselves. */
+@media(max-width:760px){
+  html,body,#root{height:100%;overflow:hidden}
+  .app-shell{height:100dvh;display:flex;flex-direction:column}
+  .sidebar{flex:none}
+  .main-area{flex:1;min-height:0;display:flex;flex-direction:column}
+  .page-content{flex:1;min-height:0;width:100%;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .work-stages{position:sticky;top:0;z-index:15;box-shadow:0 6px 12px -8px #14202a40}
+  .chat-messages,.viewer{overscroll-behavior:contain}
+}

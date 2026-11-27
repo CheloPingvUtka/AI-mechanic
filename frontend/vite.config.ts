@@ -6,9 +6,16 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 // on https or localhost). The phone shows a certificate warning once; accept it.
 declare const process: { env: Record<string, string | undefined> };  // no @types/node in this project
 const https = process.env.HTTPS === "1";
+const VAD_FILE = /silero_vad|vad\.worklet/;
 
 export default defineConfig({
   plugins: [react(), ...(https ? [basicSsl()] : [])],
   // /api goes to the backend, so the page works from a phone opened at http(s)://<this-pc-ip>:5173
   server: { port: 5173, strictPort: true, proxy: { "/api": "http://127.0.0.1:8000" } },
+  // Silero VAD finds its worklet and model by folder, so both keep their names, side by side under vad/
+  build: {
+    assetsInlineLimit: (file: string) => (VAD_FILE.test(file) ? false : undefined),
+    rollupOptions: { output: { assetFileNames: asset =>
+      VAD_FILE.test(asset.names?.[0] ?? "") ? "vad/[name][extname]" : "assets/[name]-[hash][extname]" } },
+  },
 });

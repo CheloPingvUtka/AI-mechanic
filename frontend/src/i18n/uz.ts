@@ -260,6 +260,8 @@ const uz = {
     saveFailed: "Saqlanmadi. Aloqani tekshiring",
     finished: "Ta’mir servis daftariga yozildi",
     finish: "Ta’mirni yakunlash",
+    afterLeft: "Hammasi belgilanmagan: qadamlar {{n}}/{{total}}, tekshiruv {{q}}/{{qt}}",
+    afterLeftHint: "Qaytib belgilang yoki ta’mirni shunday yakunlang.",
     afterHint: "Nimani kuzatishni eslab qoling va «Ta’mirni yakunlash»ni bosing.",
     afterTitle: "Deyarli tayyor",
     askStep: "Shu qadam haqida so‘rash",

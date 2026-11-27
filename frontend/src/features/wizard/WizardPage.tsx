@@ -82,6 +82,9 @@ export default function WizardPage() {
   }, [s.workId, steps.length > 0]);  // eslint-disable-line react-hooks/exhaustive-deps
   // The agent knows where the mechanic is in the work ("explain step 3").
   s.context.current = screen === "work" && plan.plan ? { stage: phase, step_index: step ? at + 1 : null, step_text: step?.text ?? "" } : null;
+  // Voice mode: "Думаю…" as soon as the agent starts, "Ещё чуть-чуть…" now and then, until the answer.
+  useEffect(() => { if (speakOn) void voice.warmUp(); }, [speakOn, s.lang]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => voice.waiting(speakOn && s.busy), [speakOn, s.busy]);  // eslint-disable-line react-hooks/exhaustive-deps
   // Read the current step aloud when it changes (voice mode).
   useEffect(() => { if (screen === "work" && step && speakOn) void voice.speak(step.text); }, [screen, step?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
   // "New answer" hint on the chat button while the chat is closed.
@@ -298,19 +301,25 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
   const ticked = (items: typeof prep) => items.filter(i => p.stepState(i.id).done).length;
   const building = plan.status === "building";
   const count = (items: typeof prep, n = ticked(items)) => items.length ? `${n}/${items.length}` : "";
-  const stages: [Stage, string, ReactNode, string, boolean][] = [
-    ["prep", t("work.stagePrep", "Подготовка"), <ListChecks size={22}/>, count(prep), true],
-    ["work", t("work.stageSteps", "Шаги"), <Wrench size={22}/>, count(steps, p.doneCount), steps.length > 0],
-    ["check", t("work.stageCheck", "Проверка"), <ShieldCheck size={22}/>, count(quality), steps.length > 0 || quality.length > 0],
-    ["after", t("work.stageAfter", "После"), <CalendarClock size={22}/>, "", aftercare.length > 0]];
-  const current = stages.findIndex(([id]) => id === phase);
   const allDone = p.doneCount === steps.length;
+  const checked = ticked(quality);
+  // [stage, label, icon, count, enabled, complete]: a green tick only when everything in it is marked
+  const stages: [Stage, string, ReactNode, string, boolean, boolean][] = [
+    ["prep", t("work.stagePrep", "Подготовка"), <ListChecks size={22}/>, count(prep), true, prep.length > 0 && ticked(prep) === prep.length],
+    ["work", t("work.stageSteps", "Шаги"), <Wrench size={22}/>, count(steps, p.doneCount), steps.length > 0, steps.length > 0 && allDone],
+    ["check", t("work.stageCheck", "Проверка"), <ShieldCheck size={22}/>, count(quality), steps.length > 0 || quality.length > 0,
+      quality.length > 0 && checked === quality.length],
+    ["after", t("work.stageAfter", "После"), <CalendarClock size={22}/>, "", aftercare.length > 0, false]];
+  const current = stages.findIndex(([id]) => id === phase);
+  // left behind with something unmarked: a yellow mark instead of the tick (moving on is allowed)
+  const skipped = (i: number) => i < current && !stages[i][5] && stages[i][3] !== "";
 
   return <>
     <nav className="work-stages" aria-label={t("wizard.work", "Работа")}>
-      {stages.map(([id, label, icon, n, enabled], i) => <button key={id} className={`work-stage ${i === current ? "current" : i < current ? "passed" : ""}`}
+      {stages.map(([id, label, icon, n, enabled, complete], i) => <button key={id}
+        className={`work-stage ${i === current ? "current" : complete ? "passed" : skipped(i) ? "skipped" : ""}`}
         disabled={!enabled} onClick={() => setPhase(id)} aria-current={i === current ? "step" : undefined}>
-        {i < current ? <CheckCircle2 size={22}/> : icon}<span>{label}</span>{n && <small>{n}</small>}
+        {i !== current && complete ? <CheckCircle2 size={22}/> : skipped(i) ? <AlertTriangle size={22}/> : icon}<span>{label}</span>{n && <small>{n}</small>}
       </button>)}
     </nav>
     {p.saveFailed && <p className="save-failed"><AlertTriangle size={18}/>{t("work.saveFailed", "Не сохранилось. Проверьте связь")}</p>}
@@ -371,9 +380,14 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
     </>}
 
     {phase === "after" && <>
-      <div className="work-status ready"><CheckCircle2 size={28}/><div>
-        <b>{t("work.afterTitle", "Почти готово")}</b><p>{t("work.afterHint", "Запомните, за чем следить, и жмите «Завершить ремонт».")}</p>
-      </div></div>
+      {allDone && checked === quality.length
+        ? <div className="work-status ready"><CheckCircle2 size={28}/><div>
+            <b>{t("work.afterTitle", "Почти готово")}</b><p>{t("work.afterHint", "Запомните, за чем следить, и жмите «Завершить ремонт».")}</p>
+          </div></div>
+        : <div className="work-status warn"><AlertTriangle size={28}/><div>
+            <b>{t("work.afterLeft", "Не всё отмечено: шаги {{n}} из {{total}}, проверка {{q}} из {{qt}}", { n: p.doneCount, total: steps.length, q: checked, qt: quality.length })}</b>
+            <p>{t("work.afterLeftHint", "Вернитесь и отметьте, или завершите ремонт так.")}</p>
+          </div></div>}
       {afterList}
     </>}
   </>;

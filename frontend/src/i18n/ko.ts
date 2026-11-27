@@ -260,6 +260,8 @@ const ko = {
     saveFailed: "저장되지 않았어요. 연결을 확인하세요",
     finished: "정비 수첩에 기록했어요",
     finish: "수리 완료",
+    afterLeft: "아직 다 표시하지 않았어요: 단계 {{n}}/{{total}}, 점검 {{q}}/{{qt}}",
+    afterLeftHint: "돌아가서 표시하거나 이대로 수리를 마치세요.",
     afterHint: "살펴볼 것을 기억하고 “수리 완료”를 누르세요.",
     afterTitle: "거의 끝났어요",
     askStep: "이 단계에 대해 묻기",

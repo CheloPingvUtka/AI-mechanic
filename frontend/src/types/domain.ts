@@ -73,6 +73,7 @@ export interface PlanItem {
   figures: number;
   figure?: number | null;       // the drawing the model chose for this step (on figure_page); null = none fits
   figure_page?: number | null;
+  added_at?: number;  // unix seconds, when the agent added it
   measure: { name: string; unit: string; min: number | null; max: number | null } | null;
 }
 

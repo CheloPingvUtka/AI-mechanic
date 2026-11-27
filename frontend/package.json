@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@ricky0123/vad-web": "0.0.31",
     "i18next": "^25.5.2",
     "lucide-react": "^0.468.0",
     "react": "^19.1.1",
