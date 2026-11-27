@@ -1,4 +1,4 @@
-import { AlertTriangle, BookOpen, BookOpenCheck, Camera, CheckCircle2, ChevronDown, ClipboardList, FileSearch, Loader2, ScanSearch, Scale, Stethoscope } from "lucide-react";
+import { AlertTriangle, BookOpen, BookOpenCheck, Camera, CheckCircle2, ChevronDown, ClipboardList, FileSearch, Image, Loader2, ScanSearch, Scale, Stethoscope } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgentEvent } from "../../types/domain";
@@ -38,6 +38,8 @@ function useLines(events: AgentEvent[]): Line[] {
       else if (e.status) last.result = t(e.status);
     } else if (e.type === "checking") {
       lines.push({ icon: <BookOpenCheck size={16}/>, title: t("progress.checking", "Сверяю числа с найденными страницами руководства"), done: true });
+    } else if (e.type === "figures") {
+      lines.push({ icon: <Image size={16}/>, title: t("progress.figures", "Подбираю рисунки к шагам"), done: false });
     } else if (e.type === "fixing") {
       lines.push({ icon: <AlertTriangle size={16}/>, title: t("progress.fixing", "Нашёл число без источника — переписываю ответ"), done: false, bad: true });
     }

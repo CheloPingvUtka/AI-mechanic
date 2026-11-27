@@ -122,6 +122,7 @@ const ko = {
     tools: "공구",
   },
   progress: {
+    figures: "단계에 맞는 그림을 고르는 중",
     checking: "숫자를 찾은 설명서 쪽과 맞춰 보고 있어요",
     contradiction: "설명서끼리 다른 점을 찾았어요",
     diagnosis: "점검 결과를 요청하고 있어요",
@@ -310,6 +311,9 @@ const ko = {
     },
   },
   catalog: {
+    total: "전체: {{n}}",
+    none: "찾은 결과가 없어요",
+    all: "모든 차량 — 차량 목록",
     allModels: "모든 차종",
     count: "차량 {{n}}대",
   },
@@ -338,9 +342,11 @@ const ko = {
     yes: "사진: {{what}} — 이 차량의 엔진과 비슷해요",
   },
   works: {
+    allOk: "모든 차량이 정상이에요",
+    search: "번호판 또는 차고 번호",
     continue: "계속하기",
     steps: "단계: {{total}}개 중 {{done}}개",
-    title: "끝나지 않은 작업",
+    title: "작업 중",
   },
 };
 

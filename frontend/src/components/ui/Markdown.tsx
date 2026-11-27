@@ -2,8 +2,8 @@ import { useState, type ReactNode } from "react";
 import { Check, MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import i18n from "i18next";
-import { thumb, withExcerpt, type PageRef } from "./SourceCards";
-import type { Source } from "../../types/domain";
+import { figureImage, withExcerpt, type PageRef } from "./SourceCards";
+import type { FigurePick, Source } from "../../types/domain";
 
 // The agent answers in a small Markdown subset: **bold**, "- " / "1. " lists, "#" headings.
 // React escapes the text, so model output can never inject HTML.
@@ -44,7 +44,12 @@ export function parseBlocks(text: string): Block[] {
 }
 
 /** Turns lists of an answer into step cards: manual picture, done tick, "explain" button. */
-export type StepTools = { sources?: Source[]; onOpen: (r: PageRef) => void; onExplain: (n: number, text: string) => void; busy?: boolean };
+export type StepTools = { sources?: Source[]; figures?: Record<string, FigurePick>; onOpen: (r: PageRef) => void;
+  onExplain: (n: number, text: string) => void; busy?: boolean };
+
+/** Key of a list item; the backend computes the same one for the drawing it picked (agent_service.step_key). */
+export const stepKey = (text: string) =>
+  text.replace(CITE, "").replace(/\*\*/g, "").replace(/📖/g, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "").slice(0, 60);
 
 function StepItem({ n, text, onCite, tools }: { n: number; text: string; onCite?: OnCite; tools: StepTools }) {
   const { t } = useTranslation();
@@ -52,15 +57,18 @@ function StepItem({ n, text, onCite, tools }: { n: number; text: string; onCite?
   const cite = [...text.matchAll(CITE)][0];
   const page = cite && tools.sources?.find(s => s.manual === cite[1] && s.pdf_page === Number(cite[2]));
   const plain = text.replace(CITE, "").replace(/\*\*/g, "").replace(/📖/g, "").trim();
-  // the page picture below already shows the cited page, so its chip is not repeated in the text
-  const shown = page && cite ? text.replace(cite[0], "").replace(/\s+([.,;])/g, "$1").trim() : text;
+  // the drawing the model chose for this step; none = no picture (never just the first one on the page)
+  const pick = tools.figures?.[stepKey(text)];
+  // the picture already shows the cited page, so its chip is not repeated in the text
+  const shown = pick && page && cite && pick.pdf_page === page.pdf_page ? text.replace(cite[0], "").replace(/\s+([.,;])/g, "$1").trim() : text;
   return <li className={`md-step ${done ? "done" : ""}`}>
     <button className="md-step-num" aria-pressed={done} onClick={() => setDone(d => !d)}
       aria-label={done ? t("plan.doneYes", "Сделано") : t("plan.doneNo", "Отметить")}>{done ? <Check size={18}/> : n}</button>
     <div className="md-step-text">{inline(shown, onCite)}</div>
     <div className="md-step-foot">
-      {page && <button className="md-step-thumb" onClick={() => tools.onOpen(withExcerpt(page))} aria-label={`${t("openPage", "Открыть страницу")} ${page.pdf_page}`}>
-        <img src={thumb(page)} alt="" loading="lazy"/><span>📖 {t("page", "стр.")} {page.pdf_page}</span></button>}
+      {pick && <button className="md-step-thumb" aria-label={`${t("openPage", "Открыть страницу")} ${pick.pdf_page}`}
+          onClick={() => tools.onOpen(page && page.pdf_page === pick.pdf_page ? withExcerpt(page) : { ...pick, figures: 1 })}>
+        <img src={figureImage(pick, pick.figure, 360)} alt="" loading="lazy"/><span>📖 {t("page", "стр.")} {pick.pdf_page}</span></button>}
       <button className="md-step-explain" disabled={tools.busy} onClick={() => tools.onExplain(n, plain.slice(0, 160))}>
         <MessageCircle size={16}/>{t("chat.explainBtn", "Объясни")}</button>
     </div>

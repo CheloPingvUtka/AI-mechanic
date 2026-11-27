@@ -50,7 +50,7 @@ export default function ChatPanel({ s, engine, onOpen, onSpeak, voice, heard = "
         {m.role === "user" ? m.text : <Markdown text={m.text} onCite={(manual, page) => {
           const src = m.sources?.find(x => x.manual === manual && x.pdf_page === page);
           if (src) onOpen(withExcerpt(src));
-        }} steps={m.error ? undefined : { sources: m.sources, onOpen, busy: s.busy,
+        }} steps={m.error ? undefined : { sources: m.sources, figures: m.figures, onOpen, busy: s.busy,
           onExplain: (n, text) => void s.send(t("chat.explainStep", "Объясни подробнее шаг {{n}}: {{text}}", { n, text })) }}/>}
         <Conflicts items={m.contradictions} onOpen={onOpen}/>
         {!!m.sources?.length && <SourceCards sources={m.sources} onOpen={onOpen}/>}

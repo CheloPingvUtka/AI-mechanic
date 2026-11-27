@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { PlanItem, WorkPlan } from "../../types/domain";
 import { LiveProgress } from "../../components/ui/AgentProgress";
-import { figureImage, pageImage, thumb, type PageRef } from "../../components/ui/SourceCards";
+import { figureImage, pageImage, type PageRef } from "../../components/ui/SourceCards";
 import { inNorm, normText, type PlanState, type StepState } from "./usePlan";
 
 export function pageRef(item: PlanItem): PageRef | null {
@@ -73,6 +73,8 @@ export function StepCard({ item, n, state, setStep, onOpen, big = false, isNew =
   const { t } = useTranslation();
   const ok = inNorm(item, state.value);
   const ref = pageRef(item);
+  // only the drawing the model chose for this step; without one, the cited page itself (quote highlighted)
+  const pic = ref && item.figure != null ? { ...ref, pdf_page: item.figure_page ?? ref.pdf_page } : null;
   return <li className={`step-card ${big ? "step-big" : ""} ${state.done ? "done" : ""} ${isNew ? "is-new" : ""}`}>
     <div className="step-num">{state.done ? <CheckCircle2 size={22}/> : n}</div>
     <div className="step-body">
@@ -86,13 +88,14 @@ export function StepCard({ item, n, state, setStep, onOpen, big = false, isNew =
         <small>{t("plan.norm", "Норма")}: {normText(item)}{ok === true ? ` — ${t("plan.ok", "в норме")}`
           : ok === false ? ` — ${t("plan.outOfNorm", "вне нормы")}` : ""}</small>
       </div>}
-      {ref && (big
-        ? <button className="step-figure" onClick={() => onOpen(ref)}>
-            <img src={ref.figures ? figureImage(ref, 0, 900) : pageImage(ref, 900)} alt=""/>
-            <span><BookOpen size={14}/> {ref.manual}, {t("page", "стр.")} {ref.pdf_page}</span>
+      {ref && (big && pic
+        ? <button className="step-figure" onClick={() => onOpen(pic.pdf_page === ref.pdf_page ? ref : { ...pic, hl: null })}>
+            <img src={figureImage(pic, item.figure!, 900)} alt=""/>
+            <span><BookOpen size={14}/> {ref.manual}, {t("page", "стр.")} {pic.pdf_page}</span>
           </button>
         : <button className="step-source" onClick={() => onOpen(ref)}>
-            <img src={thumb(ref)} alt="" loading="lazy"/><span><BookOpen size={13}/> {ref.manual}, {t("page", "стр.")} {ref.pdf_page}</span>
+            <img src={pic ? figureImage(pic, item.figure!, 360) : pageImage({ ...ref, hl: null }, 360)} alt="" loading="lazy"/>
+            <span><BookOpen size={13}/> {ref.manual}, {t("page", "стр.")} {pic?.pdf_page ?? ref.pdf_page}</span>
           </button>)}
     </div>
     {/* big (wizard) card: "done" is the action bar's job; here it only shows, and undoes, the mark */}

@@ -122,6 +122,7 @@ const uz = {
     tools: "Asboblar",
   },
   progress: {
+    figures: "Qadamlarga mos rasmlarni tanlayapman",
     checking: "Raqamlarni qo‘llanmaning topilgan sahifalari bilan solishtiryapman",
     contradiction: "Qo‘llanmalarda farq topdim",
     diagnosis: "Tekshiruv natijasini so‘rayapman",
@@ -310,6 +311,9 @@ const uz = {
     },
   },
   catalog: {
+    total: "Jami: {{n}}",
+    none: "Hech narsa topilmadi",
+    all: "Barcha mashinalar — Avtopark",
     allModels: "Barcha modellar",
     count: "Mashinalar: {{n}}",
   },
@@ -338,9 +342,11 @@ const uz = {
     yes: "Suratda: {{what}} — shu mashinaning dvigateliga o‘xshaydi",
   },
   works: {
+    allOk: "Barcha mashinalar me’yorida",
+    search: "Davlat raqami yoki garaj №",
     continue: "Davom ettirish",
     steps: "Qadamlar: {{total}} tadan {{done}} ta",
-    title: "Tugallanmagan ishlar",
+    title: "Ishda",
   },
 };
 
