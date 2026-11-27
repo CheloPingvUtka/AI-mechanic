@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 
 from app.rag import pages
@@ -37,9 +37,9 @@ def manual_pdf(manual_id: str):
     return FileResponse(path, media_type="application/pdf", headers={"Content-Disposition": "inline"})
 
 
-@router.get("/{manual_id}/pages/{page}.png", summary="Изображение страницы")
-def page_image(manual_id: str, page: int, w: int = 1000):
-    return Response(_guard(pages.page_png, manual_id, page, w), media_type="image/png", headers=IMMUTABLE)
+@router.get("/{manual_id}/pages/{page}.png", summary="Изображение страницы; hl — текст, который выделить жёлтым")
+def page_image(manual_id: str, page: int, w: int = 1000, hl: str | None = Query(None, max_length=2000)):
+    return Response(_guard(pages.page_png, manual_id, page, w, None, hl), media_type="image/png", headers=IMMUTABLE)
 
 
 @router.get("/{manual_id}/pages/{page}/figures/{figure}.png", summary="Рисунок со страницы")

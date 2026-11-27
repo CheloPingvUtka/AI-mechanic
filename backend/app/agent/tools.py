@@ -35,9 +35,57 @@ class AgentState:
     warning_confirmed: bool = False  # set by the mechanic's explicit confirmation in the UI
     plan: "WorkPlan | None" = None  # filled by the background plan builder (services/plan_service.py)
     conversation_id: str = ""  # also the work id; used to file disputes and book entries
+    contradictions: list = field(default_factory=list)  # this turn: verified conflicting quotes
+    photo_check: dict | None = None  # this turn: what the photo shows vs this vehicle's engine
 
 
 TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "check_photo",
+            "description": (
+                "Обязательно первым, если механик приложил фото: что на фото (двигатель или узел) и похоже ли это "
+                "на двигатель этой машины. matches: yes — похоже; no — явно другой двигатель/узел не этой машины; "
+                "unclear — по фото не понять."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "shows": {"type": "string", "description": "Что на фото, коротко: узел и, если видно, двигатель."},
+                    "matches": {"type": "string", "enum": ["yes", "no", "unclear"]},
+                    "reason": {"type": "string", "description": "Почему: какие признаки совпадают или нет."},
+                },
+                "required": ["shows", "matches", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "report_contradiction",
+            "description": (
+                "Если найденные фрагменты руководств противоречат друг другу (разные нормы, порядок, допуски для "
+                "одного и того же) — сообщи: две и более дословные цитаты с ref и что именно расходится. "
+                "Механик увидит оба варианта; случай попадёт в журнал спорных ситуаций."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "note": {"type": "string", "description": "Что расходится, одной фразой."},
+                    "sides": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"ref": {"type": "string"}, "quote": {"type": "string"}},
+                            "required": ["ref", "quote"],
+                        },
+                    },
+                },
+                "required": ["note", "sides"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -248,7 +296,38 @@ async def view_page(state: AgentState, ref: str) -> dict:
     return {"ok": True, "ref": ref, "note": "Изображение страницы приложено следующим сообщением.", "_image": png}
 
 
+async def check_photo(state: AgentState, shows: str, matches: str, reason: str) -> dict:
+    v = state.vehicle
+    state.photo_check = {"shows": shows, "matches": matches if matches in ("yes", "no", "unclear") else "unclear",
+                         "reason": reason, "engine": v.engine_model}
+    if state.photo_check["matches"] == "no":
+        store.add_dispute("photo_mismatch", f"На фото: {shows}. Машина: {v.vehicle_id}, {v.engine_model}. {reason}",
+                          v.vehicle_id, state.conversation_id or None, state.photo_check)
+        return {"ok": True, "note": "Предупреди механика первой строкой: фото не похоже на двигатель этой машины; "
+                                    "рекомендации — только по руководству на её двигатель."}
+    return {"ok": True}
+
+
+async def report_contradiction(state: AgentState, note: str, sides: list[dict]) -> dict:
+    verified, errors = [], []
+    for side in sides or []:
+        hit = state.hits.get(side.get("ref", ""))
+        if hit is None or not quote_in(side.get("quote", ""), hit.text):
+            errors.append(f"{side.get('ref')}: цитата не дословна или страница не найдена")
+        else:
+            verified.append({"manual_id": hit.manual_id, "manual": hit.short, "pdf_page": hit.pdf_page,
+                             "quote": side["quote"]})
+    if len(verified) < 2:
+        return {"error": "Нужны минимум две дословные цитаты из найденных фрагментов. " + "; ".join(errors)}
+    item = {"note": note, "sides": verified}
+    state.contradictions.append(item)
+    store.add_dispute("contradiction", note, state.vehicle.vehicle_id, state.conversation_id or None, item)
+    return {"ok": True, "note": "Покажи механику оба варианта со страницами и посоветуй уточнить у производителя."}
+
+
 HANDLERS = {
+    "check_photo": check_photo,
+    "report_contradiction": report_contradiction,
     "get_diagnosis": get_diagnosis,
     "search_manual": search_manual,
     "view_page": view_page,

@@ -13,6 +13,7 @@ from app.agent.tools import TOOLS, AgentState, run_tool
 from app.domain.diagnostic_rules import CONFIDENCE_MIN, URGENCY_MEANING
 from app.integrations.llm_client import LLMClient
 from app.rag import pages
+from app.rag.manuals import BY_ID
 from app.rag.search import Hit
 from app.repositories import store
 from app.repositories.vehicle_catalog import JsonVehicleCatalog
@@ -39,7 +40,7 @@ SYSTEM_PROMPT = """Ты — «Цифровой механик», помощни�
 {history}
 Ранее созданные заявки: {tickets}
 
-Инструменты: get_diagnosis — результат акустической проверки; search_manual — поиск по руководствам; view_page — посмотреть страницу руководства с рисунками; create_ticket — заявка на дефектовку в ТОиР.
+Инструменты: get_diagnosis — результат акустической проверки; search_manual — поиск по руководствам; view_page — посмотреть страницу руководства с рисунками; create_ticket — заявка на дефектовку в ТОиР; check_photo — что на фото механика; report_contradiction — расхождение в руководствах.
 
 Правила:
 1. Числа (нормативы, допуски, моменты затяжки, давления, зазоры) и порядок работ — только из фрагментов search_manual. Сразу после утверждения ставь ключ фрагмента в квадратных скобках, например [yamz236_rk:41]. Ключи бери только из результатов поиска. Фрагмент с ocr=true распознан со скана: числа из него сопровождай пометкой «сверить по странице руководства».
@@ -55,8 +56,10 @@ SYSTEM_PROMPT = """Ты — «Цифровой механик», помощни�
 6. «Запрещено выпускать в рейс / эксплуатация запрещена» пиши только если фрагмент руководства прямо это говорит, со ссылкой. Иначе формулируй как рекомендацию. Приоритеты: high — {u_high}; medium — {u_medium}; low — {u_low}.
 7. create_ticket вызывай только по команде механика. Нужна процедура именно того узла, на который указывает тип неисправности; процедура по смежному симптому (например, «двигатель работает неустойчиво» вместо системы зажигания) не годится. Если такой процедуры нет — заявку не создавай: объясни, что в руководстве на этот двигатель нет инструкции по этой неисправности, и дай текст рекомендации на дефектовку с результатом проверки. Если в диагнозе есть ticket_blocked_reason или create_ticket вернул error — объясни причину простыми словами. Если руководство прямо запрещает эксплуатацию при этой неисправности — передай цитату в operation_ban.
 8. Ответ по отклонению или технический ответ: первой строкой — короткий вердикт. Дальше разделы: Наблюдения; Гипотезы (инженерная оценка, не из руководства); Проверки; Возможный ремонт; Источник; Ограничения. Пиши коротко и просто, без JSON и без внутренних полей.
-9. Фото от механика: найди в руководстве рисунок этого узла (search_manual, затем view_page) и сравни. Вывод по фото — всегда гипотеза в разделе «Гипотезы»: скажи, что именно совпадает или не совпадает, на какой рисунок и страницу опирался, и что проверить руками. Размеры и нормы по фото не определяй.
-10. Язык ответа указан в конце сообщения механика. На вопросы не о технике и не об этой машине вежливо откажись."""
+9. Фото от механика: сначала check_photo — что на фото и похоже ли на двигатель этой машины ({engine}); если не похоже, скажи это первой строкой. Затем найди в руководстве рисунок этого узла (search_manual, затем view_page) и сравни. Вывод по фото — всегда гипотеза в разделе «Гипотезы»: скажи, что именно совпадает или не совпадает, на какой рисунок и страницу опирался, и что проверить руками. Размеры и нормы по фото не определяй.
+10. Если фрагменты руководств расходятся (разные нормы, порядок, допуски для одного и того же) — вызови report_contradiction с цитатами обеих сторон, в ответе покажи оба варианта со ссылками и посоветуй уточнить у производителя; сам не выбирай.
+11. Если в сообщении указано, где механик в инструкции (этап, шаг) — отвечай про этот шаг; на шаги ссылайся по номеру.
+12. Язык ответа указан в конце сообщения механика. На вопросы не о технике и не об этой машине вежливо откажись."""
 
 FIX_PROMPT = (
     "Проверка ответа не пройдена: {problems}. Перепиши ответ: каждое число — только из "
@@ -81,6 +84,17 @@ def summarize(name: str, result: dict) -> dict:
     if name == "create_ticket":
         return {"ticket_id": result.get("ticket_id"), "urgency": result.get("urgency")}
     return {}
+
+
+def official_links(contradiction: dict) -> list[dict]:
+    """Where to ask the manufacturer: official pages of the manuals on both sides."""
+    seen, out = set(), []
+    for side in contradiction["sides"]:
+        m = BY_ID.get(side["manual_id"])
+        if m and m.official_url and m.id not in seen:
+            seen.add(m.id)
+            out.append({"manual": m.short, "url": m.official_url})
+    return out
 
 
 def figure_count(manual_id: str, page: int) -> int:
@@ -215,6 +229,7 @@ class AgentService:
         if payload.session_id and payload.session_id != state.session_id:
             state.session_id, state.diagnosis = payload.session_id, None
         state.warning_confirmed = payload.confirm_warning
+        state.contradictions, state.photo_check = [], None
         text = payload.message
         if payload.confirm_warning:
             text += "\n[Механик прочитал предупреждение о качестве записи и подтверждает создание заявки.]"
@@ -222,6 +237,10 @@ class AgentService:
             plan_steps = "; ".join(f"{i + 1}) {st.text[:80]}" for i, st in enumerate(state.plan.steps[:12]))
             text += (f"\n[Рабочий план ({'готов' if state.plan.status == 'ready' else 'собирается в фоне'}), "
                      f"механик его видит. Шаги: {plan_steps or 'пока нет'}]")
+        if payload.context:
+            c = payload.context
+            stage = {"prep": "подготовка", "work": "работа", "check": "проверка", "after": "после ремонта"}.get(c.stage or "", "")
+            text += f"\n[Механик сейчас в инструкции: этап «{stage}»" + (f", шаг {c.step_index}: {c.step_text}" if c.step_index else "") + "]"
         text += f"\n[{LANG_RULE[payload.lang]}]"
         if payload.images:
             text += f"\n[Механик приложил фото: {len(payload.images)} шт.]"
@@ -308,6 +327,8 @@ class AgentService:
             ],
             diagnosis=state.diagnosis if state.diagnosis is not diagnosis_before else None,
             ticket=new_ticket,
+            photo_check=state.photo_check,
+            contradictions=[c | {"official": official_links(c)} for c in state.contradictions],
             steps=steps,
             cost_usd=round(sum(s.cost_usd for s in steps), 6),
         )

@@ -5,6 +5,7 @@ Vector drawings are found the way a person sees them: render the page small, era
 and take the large connected areas of ink that are left; areas dense with text are tables, not
 drawings. Scans without a text layer are skipped (the whole page is the picture there).
 """
+import hashlib
 import io
 import threading
 from collections import deque
@@ -145,10 +146,25 @@ def _cache_file(name: str) -> Path:
     return path
 
 
-def page_png(manual_id: str, page: int, width: int = 1000, figure: int | None = None) -> bytes:
-    """PNG of a page (or of one figure on it), rendered once and cached next to the index."""
+def highlight_boxes(textpage, text: str) -> list[tuple]:
+    """Where the quoted text sits on the page (PDF points). Searched line by line, since a quote can
+    span lines and our cleaned text has hyphenation removed; lines too short to be unique are skipped."""
+    boxes = []
+    for line in {ln.strip() for ln in text.splitlines() if len(ln.strip()) >= 12}:
+        searcher = textpage.search(line[:120], match_case=False)
+        while (found := searcher.get_next()) is not None:
+            start, count = found
+            boxes += [textpage.get_rect(i) for i in range(textpage.count_rects(start, count))]
+    return boxes
+
+
+def page_png(manual_id: str, page: int, width: int = 1000, figure: int | None = None,
+             highlight: str | None = None) -> bytes:
+    """PNG of a page (or of one figure on it), rendered once and cached next to the index.
+    `highlight`: text to mark in yellow (the quote an answer relies on)."""
     width = max(200, min(width, 2000))
-    cached = _cache_file(f"{manual_id}-{page}-{figure if figure is not None else 'p'}-{width}.png")
+    mark = hashlib.sha1(highlight.encode()).hexdigest()[:10] if highlight else "x"
+    cached = _cache_file(f"{manual_id}-{page}-{figure if figure is not None else 'p'}-{width}-{mark}.png")
     if cached.is_file():
         return cached.read_bytes()
     box = None
@@ -162,7 +178,16 @@ def page_png(manual_id: str, page: int, width: int = 1000, figure: int | None = 
         pw, ph = pg.get_size()
         scale = width / ((box[2] - box[0]) if box else pw)
         crop = (0, 0, 0, 0) if box is None else (box[0], box[1], pw - box[2], ph - box[3])
-        image = pg.render(scale=scale, crop=crop).to_pil()
+        image = pg.render(scale=scale, crop=crop).to_pil().convert("RGB")
+        marks = highlight_boxes(pg.get_textpage(), highlight) if highlight else []
+    if marks:
+        overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        for l, b, r, t in marks:
+            x0, y0 = (l - crop[0]) * scale, (ph - crop[3] - t) * scale
+            draw.rectangle([x0 - 2, y0 - 2, (r - crop[0]) * scale + 2, (ph - crop[3] - b) * scale + 2],
+                           fill=(255, 214, 0, 110))
+        image = Image.alpha_composite(image.convert("RGBA"), overlay)
     buf = io.BytesIO()
     image.convert("RGB").save(buf, format="PNG", optimize=True)
     cached.write_bytes(buf.getvalue())

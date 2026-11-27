@@ -5,6 +5,12 @@ from pydantic import BaseModel, Field, field_validator
 from app.schemas.diagnostics import DiagnoseResponse
 
 
+class WorkContext(BaseModel):
+    stage: Literal["prep", "work", "check", "after"] | None = None
+    step_index: int | None = Field(None, ge=1, description="Номер открытого шага (с 1)")
+    step_text: str | None = Field(None, max_length=600)
+
+
 class ChatRequest(BaseModel):
     vehicle_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
@@ -14,6 +20,7 @@ class ChatRequest(BaseModel):
     confirm_warning: bool = Field(
         False, description="Механик прочитал предупреждение о качестве записи и подтверждает заявку"
     )
+    context: "WorkContext | None" = Field(None, description="Где механик сейчас в инструкции")
     images: list[str] = Field(
         [], max_length=4, description="Фото механика: data:image/jpeg;base64,… (сжатые на устройстве)"
     )
@@ -63,5 +70,7 @@ class ChatResponse(BaseModel):
     sources: list[SourceReference] = []
     diagnosis: DiagnoseResponse | None = None
     ticket: dict | None = None
+    photo_check: dict | None = None  # {shows, matches: yes|no|unclear, reason, engine}
+    contradictions: list[dict] = []  # [{note, sides: [{manual_id, manual, pdf_page, quote}], official}]
     steps: list[Step] = []
     cost_usd: float = 0.0

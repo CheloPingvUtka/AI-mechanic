@@ -52,6 +52,7 @@ class WorkPlan:
     steps: list[PlanItem] = field(default_factory=list)
     quality: list[PlanItem] = field(default_factory=list)
     aftercare: list[PlanItem] = field(default_factory=list)
+    conflicts: list[dict] = field(default_factory=list)  # verified contradictions between manuals
     status: str = "building"  # building | ready | failed
     note: str = ""
     note_code: str = ""  # set when no plan is needed (block code), so the UI can translate the note
@@ -66,7 +67,7 @@ class WorkPlan:
             measure = raw.get("measure")
             return PlanItem(**{**raw, "measure": Measure(**measure) if measure else None})
         lists = {name: [item(i) for i in data.get(name) or []] for name in SECTIONS}
-        scalars = {k: data[k] for k in ("status", "note", "note_code", "version") if k in data}
+        scalars = {k: data[k] for k in ("status", "note", "note_code", "version", "conflicts") if k in data}
         return cls(**lists, **scalars)
 
 

@@ -23,6 +23,7 @@ from app.services.agent_service import (
     CONVERSATIONS,
     AgentService,
     Conversation,
+    official_links,
     restore_conversation,
     save_conversation,
     summarize,
@@ -54,7 +55,8 @@ FALLBACK = {
                "다음 정비 때 음향 점검을 다시 하고 수리 전 결과와 비교하세요"],
     },
 }
-PLAN_TOOLS = [t for t in TOOLS if t["function"]["name"] in ("search_manual", "view_page")] + [UPDATE_PLAN, FINISH_PLAN]
+PLAN_TOOLS = [t for t in TOOLS if t["function"]["name"] in ("search_manual", "view_page", "report_contradiction")] + [
+    UPDATE_PLAN, FINISH_PLAN]
 
 PLAN_PROMPT = """Ты готовишь рабочий план для механика, который сейчас будет разбираться с неисправностью. Механик видит план сразу, пока ты работаешь, поэтому заполняй его по частям. План из трёх этапов: 1) Подготовка, 2) Работа, 3) Проверка, и после — рекомендации.
 
@@ -70,6 +72,7 @@ PLAN_PROMPT = """Ты готовишь рабочий план для механ
 6. quality — контрольный список проверки после работ: все работы выполнены, детали и узлы установлены правильно, соединения и крепления проверены (моменты затяжки — только из руководства), не осталось посторонних предметов, двигатель готов к запуску. Пункты из руководства — с ref; общие — preliminary без чисел.
 7. aftercare — рекомендации после ремонта: на какие узлы и параметры смотреть, признаки неудачного ремонта или повторной неисправности, что контролировать в первую очередь, через какой пробег перепроверить, профилактика. Пробег, интервалы и нормы — только из руководства (ищи обкатку, ТО, периодичность) с ref; если в руководстве нет — пиши без чисел, preliminary.
 8. Чтобы шаг был нагляднее, можешь открыть страницу через view_page и убедиться, что на ней есть рисунок этого узла.
+8а. Если фрагменты руководств расходятся (разные нормы или порядок для одного и того же) — report_contradiction с цитатами обеих сторон; в шаге напиши «есть расхождение в руководствах — см. предупреждение», норму не выбирай.
 9. В конце — finish_plan с короткой запиской. Если процедуры для этого узла в руководстве на этот двигатель нет, шаги не придумывай: finish_plan и объясни это.
 Тексты пунктов пиши коротко и простыми словами: механик читает с телефона. {lang_rule} Поле quote — всегда дословно из фрагмента, по-русски."""
 
@@ -195,6 +198,9 @@ async def _build(work: Work) -> None:
                     if image := result.pop("_image", None):
                         images.append((result["ref"], image))
                     work.emit({"type": "tool_result", "name": name, **summarize(name, result)})
+                    if name == "report_contradiction" and result.get("ok"):
+                        plan.conflicts = [c | {"official": official_links(c)} for c in state.contradictions]
+                        work.emit_plan()
                 messages.append({"role": "tool", "tool_call_id": call["id"],
                                  "content": json.dumps(result, ensure_ascii=False, default=str)})
             for ref, png in images:
