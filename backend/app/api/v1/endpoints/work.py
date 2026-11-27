@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -13,13 +14,14 @@ router = APIRouter()
 class WorkStart(BaseModel):
     vehicle_id: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
+    lang: Literal["ru", "uz", "ko"] = "ru"
 
 
 @router.post("", summary="Начать работу по проверке: в фоне строится рабочий план")
 async def start_work(payload: WorkStart):
     """Returns work_id; it is also the chat conversation_id, so chat and plan share what was found."""
     try:
-        return {"work_id": await plan_service.start(payload.vehicle_id, payload.session_id)}
+        return {"work_id": await plan_service.start(payload.vehicle_id, payload.session_id, payload.lang)}
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.diagnostics import DiagnoseResponse
@@ -6,6 +8,7 @@ from app.schemas.diagnostics import DiagnoseResponse
 class ChatRequest(BaseModel):
     vehicle_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
+    lang: Literal["ru", "uz", "ko"] = "ru"
     conversation_id: str | None = None
     session_id: str | None = Field(None, description="Проверка; по умолчанию последняя проверка машины")
     confirm_warning: bool = Field(
@@ -24,6 +27,17 @@ class ChatRequest(BaseModel):
             if len(url) > 3_000_000:
                 raise ValueError("фото больше ~2 МБ: уменьшите перед отправкой")
         return images
+
+
+LANG_RULE = {
+    "ru": "Ответь по-русски.",
+    "uz": ("Ответь на узбекском языке латиницей (o‘zbekcha), простыми словами. Цитаты из руководства, названия "
+           "документов и обозначения оставь дословно по-русски; числа и единицы — как в руководстве."),
+    "ko": ("Ответь на корейском языке (한국어), простыми словами. Цитаты из руководства, названия документов "
+           "и обозначения оставь дословно по-русски; числа и единицы — как в руководстве."),
+}
+UNVERIFIED = {"ru": "⚠ Не подтверждено руководством", "uz": "⚠ Qo‘llanma bilan tasdiqlanmagan",
+              "ko": "⚠ 설명서로 확인되지 않음"}
 
 
 class SourceReference(BaseModel):

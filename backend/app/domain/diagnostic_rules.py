@@ -69,27 +69,37 @@ def fault_mismatch(anomaly_type: str | None, fuel: str | None) -> str | None:
     return None
 
 
-def ticket_block_reason(d: DiagnoseResponse, warning_confirmed: bool, fuel: str | None = None) -> str | None:
-    """Why a defect ticket must not be created for this check, or None if it may."""
+def block_code(d: DiagnoseResponse, warning_confirmed: bool, fuel: str | None = None) -> str | None:
+    """Machine-readable reason a ticket is blocked (the UI translates it), or None if it may be created."""
     if d.status == "check_failed" or d.signal_quality == "bad":
-        return "Запись непригодна: вывод о двигателе и заявка невозможны. Повторите запись."
+        return "bad_recording"
     if d.status == "normal":
-        return "Отклонение не обнаружено: заявку по неисправности создавать не на что."
+        return "no_anomaly"
     if not d.anomaly_type or d.anomaly_score is None:
-        return "В ответе диагностики нет кода или оценки неисправности."
+        return "no_fault_code"
     if d.confidence is None or d.confidence < CONFIDENCE_MIN:
-        return (
-            f"Уверенность модели {d.confidence} ниже порога {CONFIDENCE_MIN:.2f}: "
-            "нужна повторная проверка, заявка не создаётся."
-        )
-    if reason := fault_mismatch(d.anomaly_type, fuel):
-        return reason
+        return "low_confidence"
+    if fault_mismatch(d.anomaly_type, fuel):
+        return "fuel_mismatch"
     if d.signal_quality == "warning" and not warning_confirmed:
-        return (
-            "Запись с помехами (warning): заявку можно создать только после того, как механик "
-            "прочитает предупреждение и нажмёт кнопку «Подтверждаю, создать заявку»."
-        )
+        return "needs_confirmation"
     return None
+
+
+def ticket_block_reason(d: DiagnoseResponse, warning_confirmed: bool, fuel: str | None = None) -> str | None:
+    """Why a defect ticket must not be created for this check (Russian, for the agent), or None."""
+    code = block_code(d, warning_confirmed, fuel)
+    return {
+        None: None,
+        "bad_recording": "Запись непригодна: вывод о двигателе и заявка невозможны. Повторите запись.",
+        "no_anomaly": "Отклонение не обнаружено: заявку по неисправности создавать не на что.",
+        "no_fault_code": "В ответе диагностики нет кода или оценки неисправности.",
+        "low_confidence": f"Уверенность модели {d.confidence} ниже порога {CONFIDENCE_MIN:.2f}: "
+                          "нужна повторная проверка, заявка не создаётся.",
+        "fuel_mismatch": fault_mismatch(d.anomaly_type, fuel),
+        "needs_confirmation": "Запись с помехами (warning): заявку можно создать только после того, как механик "
+                              "прочитает предупреждение и нажмёт кнопку «Подтверждаю, создать заявку».",
+    }[code]
 
 
 FLEET_STATES = ("quarantine", "attention", "normal")
@@ -99,18 +109,19 @@ def fleet_state(status: str, anomaly_type: str | None, anomaly_score: float | No
                 confidence: float | None, fuel: str | None) -> dict:
     """Vehicle state for the chief mechanic, from its latest check, by the same rules as tickets."""
     if status == "normal":
-        return {"state": "normal", "urgency": None, "reason": "Последняя проверка: норма"}
+        return {"state": "normal", "urgency": None, "code": "normal", "reason": "Последняя проверка: норма"}
     if status == "check_failed":
-        return {"state": "attention", "urgency": None, "reason": "Запись отбракована: повторить проверку"}
+        return {"state": "attention", "urgency": None, "code": "bad_recording",
+                "reason": "Запись отбракована: повторить проверку"}
     if confidence is None or confidence < CONFIDENCE_MIN:
-        return {"state": "attention", "urgency": None,
+        return {"state": "attention", "urgency": None, "code": "low_confidence",
                 "reason": f"Уверенность ниже {CONFIDENCE_MIN:.2f}: повторить проверку"}
     if fault_mismatch(anomaly_type, fuel):
-        return {"state": "attention", "urgency": None,
+        return {"state": "attention", "urgency": None, "code": "fuel_mismatch",
                 "reason": "Тип неисправности не подходит к двигателю: повторить проверку"}
     level = urgency(anomaly_type, anomaly_score)
     return {"state": "quarantine" if level == "high" else "attention", "urgency": level,
-            "reason": URGENCY_MEANING[level]}
+            "code": f"urgency_{level}", "reason": URGENCY_MEANING[level]}
 
 
 def assess(d: DiagnoseResponse, fuel: str | None, warning_confirmed: bool = False) -> dict:
@@ -118,6 +129,7 @@ def assess(d: DiagnoseResponse, fuel: str | None, warning_confirmed: bool = Fals
     out = {
         "confidence_threshold": CONFIDENCE_MIN,
         "ticket_blocked_reason": ticket_block_reason(d, warning_confirmed, fuel),
+        "block_code": block_code(d, warning_confirmed, fuel),
         "needs_warning_confirmation": (
             not warning_confirmed
             and ticket_block_reason(d, False, fuel) is not None

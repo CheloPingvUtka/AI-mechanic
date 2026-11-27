@@ -46,6 +46,7 @@ class WorkPlan:
     steps: list[PlanItem] = field(default_factory=list)
     status: str = "building"  # building | ready | failed
     note: str = ""
+    note_code: str = ""  # set when no plan is needed (block code), so the UI can translate the note
     version: int = 0
 
     def snapshot(self) -> dict:

@@ -15,7 +15,7 @@ from app.agent.tools import TOOLS, AgentState, run_tool
 from app.domain.diagnostic_rules import assess
 from app.integrations.llm_client import LLMClient, LLMError
 from app.integrations.mock_ml_client import MockMLClient
-from app.schemas.assistant import ChatRequest
+from app.schemas.assistant import LANG_RULE, ChatRequest
 from app.schemas.diagnostics import DiagnoseRequest
 from app.services.agent_service import AgentService, summarize
 
@@ -36,7 +36,7 @@ PLAN_PROMPT = """Ты готовишь рабочий план для механ
 5. Меры безопасности из руководства — section="safety".
 6. Чтобы шаг был нагляднее, можешь открыть страницу через view_page и убедиться, что на ней есть рисунок этого узла.
 7. В конце — finish_plan с короткой запиской. Если процедуры для этого узла в руководстве на этот двигатель нет, шаги не придумывай: finish_plan и объясни это.
-Пиши по-русски, коротко и простыми словами: механик читает с телефона."""
+Тексты пунктов пиши коротко и простыми словами: механик читает с телефона. {lang_rule} Поле quote — всегда дословно из фрагмента, по-русски."""
 
 
 @dataclass
@@ -47,6 +47,7 @@ class Work:
     subscribers: set[asyncio.Queue] = field(default_factory=set)
     task: asyncio.Task | None = None
     cost_usd: float = 0.0
+    lang: str = "ru"
 
     def emit(self, event: dict) -> None:
         self.log.append(event)
@@ -61,7 +62,7 @@ class Work:
 WORKS: dict[str, Work] = {}
 
 
-async def start(vehicle_id: str, session_id: str) -> str:
+async def start(vehicle_id: str, session_id: str, lang: str = "ru") -> str:
     """Creates (or reuses) the conversation for this check and starts building its plan."""
     service = AgentService()
     conv_id, conv = service._conversation(ChatRequest(vehicle_id=vehicle_id, session_id=session_id, message="."))
@@ -69,7 +70,7 @@ async def start(vehicle_id: str, session_id: str) -> str:
         return conv_id
     plan = WorkPlan()
     conv.state.plan = plan
-    work = WORKS[conv_id] = Work(state=conv.state, plan=plan)
+    work = WORKS[conv_id] = Work(state=conv.state, plan=plan, lang=lang)
     work.task = asyncio.create_task(_build(work))
     return conv_id
 
@@ -81,6 +82,7 @@ async def _build(work: Work) -> None:
         state.diagnosis = d
         verdict = assess(d, state.vehicle.fuel)
         if d.status != "anomaly" or verdict["ticket_blocked_reason"] and not verdict["needs_warning_confirmation"]:
+            plan.note_code = verdict["block_code"] or ""
             plan.status, plan.note = "ready", (
                 "Отклонений нет — план работ не нужен." if d.status == "normal"
                 else verdict["ticket_blocked_reason"] or "Нужна повторная запись."
@@ -91,6 +93,7 @@ async def _build(work: Work) -> None:
         messages = [{"role": "system", "content": PLAN_PROMPT.format(
             vehicle=" ".join(x for x in (v.make, v.model, v.vehicle_id) if x), engine=v.engine_model,
             diagnosis=json.dumps({**d.model_dump(), **verdict}, ensure_ascii=False, default=str),
+            lang_rule=LANG_RULE.get(work.lang, LANG_RULE["ru"]),
         )}, {"role": "user", "content": "Составь рабочий план."}]
         work.emit_plan()
         llm = LLMClient()

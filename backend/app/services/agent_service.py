@@ -13,7 +13,14 @@ from app.domain.diagnostic_rules import CONFIDENCE_MIN, URGENCY_MEANING
 from app.integrations.llm_client import LLMClient
 from app.rag import pages
 from app.repositories.vehicle_catalog import JsonVehicleCatalog
-from app.schemas.assistant import ChatRequest, ChatResponse, SourceReference, Step
+from app.schemas.assistant import (
+    LANG_RULE,
+    UNVERIFIED,
+    ChatRequest,
+    ChatResponse,
+    SourceReference,
+    Step,
+)
 from app.schemas.vehicles import Vehicle
 
 MAX_TOOL_ROUNDS = 6
@@ -45,7 +52,7 @@ SYSTEM_PROMPT = """Ты — «Цифровой механик», помощни�
 7. create_ticket вызывай только по команде механика. Нужна процедура именно того узла, на который указывает тип неисправности; процедура по смежному симптому (например, «двигатель работает неустойчиво» вместо системы зажигания) не годится. Если такой процедуры нет — заявку не создавай: объясни, что в руководстве на этот двигатель нет инструкции по этой неисправности, и дай текст рекомендации на дефектовку с результатом проверки. Если в диагнозе есть ticket_blocked_reason или create_ticket вернул error — объясни причину простыми словами. Если руководство прямо запрещает эксплуатацию при этой неисправности — передай цитату в operation_ban.
 8. Ответ по отклонению или технический ответ: первой строкой — короткий вердикт. Дальше разделы: Наблюдения; Гипотезы (инженерная оценка, не из руководства); Проверки; Возможный ремонт; Источник; Ограничения. Пиши коротко и просто, без JSON и без внутренних полей.
 9. Фото от механика: найди в руководстве рисунок этого узла (search_manual, затем view_page) и сравни. Вывод по фото — всегда гипотеза в разделе «Гипотезы»: скажи, что именно совпадает или не совпадает, на какой рисунок и страницу опирался, и что проверить руками. Размеры и нормы по фото не определяй.
-10. Отвечай по-русски. На вопросы не о технике и не об этой машине вежливо откажись."""
+10. Язык ответа указан в конце сообщения механика. На вопросы не о технике и не об этой машине вежливо откажись."""
 
 FIX_PROMPT = (
     "Проверка ответа не пройдена: {problems}. Перепиши ответ: каждое число — только из "
@@ -170,6 +177,7 @@ class AgentService:
             plan_steps = "; ".join(f"{i + 1}) {st.text[:80]}" for i, st in enumerate(state.plan.steps[:12]))
             text += (f"\n[Рабочий план ({'готов' if state.plan.status == 'ready' else 'собирается в фоне'}), "
                      f"механик его видит. Шаги: {plan_steps or 'пока нет'}]")
+        text += f"\n[{LANG_RULE[payload.lang]}]"
         if payload.images:
             text += f"\n[Механик приложил фото: {len(payload.images)} шт.]"
             content = [{"type": "text", "text": text}] + [
@@ -237,7 +245,7 @@ class AgentService:
             answer = (await self._llm(conv, steps, "none", purpose="llm:fix")).get("content") or answer
             problems = answer_problems(answer, state.hits, trusted)
             if problems:
-                answer += "\n\n⚠ Не подтверждено руководством: " + "; ".join(problems) + "."
+                answer += f"\n\n{UNVERIFIED[payload.lang]}: " + "; ".join(problems) + "."
 
         answer, cited = render_citations(answer, state.hits)
         new_ticket = tickets[-1] if len(tickets) > tickets_before else None
