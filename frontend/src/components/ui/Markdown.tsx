@@ -3,10 +3,18 @@ import type { ReactNode } from "react";
 // The agent answers in a small Markdown subset: **bold**, "- " / "1. " lists, "#" headings.
 // React escapes the text, so model output can never inject HTML.
 
-function inline(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith("**") && part.endsWith("**") ? <b key={i}>{part.slice(2, -2)}</b> : part,
-  );
+export type OnCite = (manual: string, page: number) => void;
+const CITE = /\(([^()]+?), стр\. (\d+)\)/g;  // what the backend renders for [manual_id:page]
+
+function inline(text: string, onCite?: OnCite): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*|\([^()]+?, стр\. \d+\))/g).map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) return <b key={i}>{inline(part.slice(2, -2), onCite)}</b>;
+    const cite = onCite && [...part.matchAll(CITE)][0];
+    if (cite && cite[0] === part) {
+      return <button key={i} className="cite-chip" onClick={() => onCite(cite[1], Number(cite[2]))}>📖 {cite[1]}, {cite[2]}</button>;
+    }
+    return part;
+  });
 }
 
 type Block = { kind: "p"; text: string } | { kind: "h"; text: string } | { kind: "ul"; items: string[] } | { kind: "ol"; items: string[] };
@@ -28,13 +36,13 @@ export function parseBlocks(text: string): Block[] {
   return blocks;
 }
 
-export default function Markdown({ text }: { text: string }) {
+export default function Markdown({ text, onCite }: { text: string; onCite?: OnCite }) {
   return <div className="md">
     {parseBlocks(text).map((b, i) =>
-      b.kind === "p" ? <p key={i}>{inline(b.text)}</p>
-      : b.kind === "h" ? <h4 key={i}>{inline(b.text)}</h4>
-      : b.kind === "ul" ? <ul key={i}>{b.items.map((t, j) => <li key={j}>{inline(t)}</li>)}</ul>
-      : <ol key={i}>{b.items.map((t, j) => <li key={j}>{inline(t)}</li>)}</ol>,
+      b.kind === "p" ? <p key={i}>{inline(b.text, onCite)}</p>
+      : b.kind === "h" ? <h4 key={i}>{inline(b.text, onCite)}</h4>
+      : b.kind === "ul" ? <ul key={i}>{b.items.map((t, j) => <li key={j}>{inline(t, onCite)}</li>)}</ul>
+      : <ol key={i}>{b.items.map((t, j) => <li key={j}>{inline(t, onCite)}</li>)}</ol>,
     )}
   </div>;
 }

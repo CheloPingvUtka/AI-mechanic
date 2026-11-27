@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.diagnostics import DiagnoseResponse
 
@@ -11,13 +11,28 @@ class ChatRequest(BaseModel):
     confirm_warning: bool = Field(
         False, description="Механик прочитал предупреждение о качестве записи и подтверждает заявку"
     )
+    images: list[str] = Field(
+        [], max_length=4, description="Фото механика: data:image/jpeg;base64,… (сжатые на устройстве)"
+    )
+
+    @field_validator("images")
+    @classmethod
+    def images_are_small_data_urls(cls, images: list[str]) -> list[str]:
+        for url in images:
+            if not url.startswith(("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")):
+                raise ValueError("фото должно быть data URL jpeg/png/webp")
+            if len(url) > 3_000_000:
+                raise ValueError("фото больше ~2 МБ: уменьшите перед отправкой")
+        return images
 
 
 class SourceReference(BaseModel):
+    manual_id: str
     manual: str
     pdf_page: int
     excerpt: str
     ocr: bool = False
+    figures: int = 0  # cut-out figures on that page: /manuals/{manual_id}/pages/{pdf_page}/figures/{i}.png
 
 
 class Step(BaseModel):

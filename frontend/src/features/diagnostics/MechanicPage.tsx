@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, ClipboardCheck, ClipboardPlus, Loader2, RefreshCw, Send, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowRight, BookOpen, Camera, CheckCircle2, ClipboardCheck, ClipboardPlus, Loader2, RefreshCw, Send, ShieldAlert, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { api, formatDate, URGENCY_LABEL, useLoad, vehicleName } from "../../lib/api";
-import type { Assessment, ChatMessage, Source, Ticket } from "../../types/domain";
+import { api, chatStream, formatDate, shrinkPhoto, URGENCY_LABEL, useLoad, vehicleName } from "../../lib/api";
+import type { AgentEvent, Assessment, ChatMessage, Ticket } from "../../types/domain";
+import SourceCards, { PageViewer, type PageRef } from "../../components/ui/SourceCards";
+import { LiveProgress, ProgressLog } from "../../components/ui/AgentProgress";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Markdown from "../../components/ui/Markdown";
 import ScoreChart, { trend } from "../../components/ui/ScoreChart";
@@ -24,6 +26,10 @@ export default function MechanicPage() {
   const [busy, setBusy] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [live, setLive] = useState<AgentEvent[]>([]);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [viewer, setViewer] = useState<PageRef | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
   const conversation = useRef<string | null>(null);
   const chatBox = useRef<HTMLDivElement>(null);
 
@@ -34,21 +40,30 @@ export default function MechanicPage() {
     conversation.current = null;
   }, [vehicle]);
   // Scroll only the chat box (desktop); never the page, so the verdict stays in view on a phone.
-  useEffect(() => { chatBox.current?.scrollTo({ top: chatBox.current.scrollHeight, behavior: "smooth" }); }, [messages, busy]);
+  useEffect(() => { chatBox.current?.scrollTo({ top: chatBox.current.scrollHeight, behavior: "smooth" }); }, [messages, busy, live]);
+
+  async function addPhotos(files: FileList | null) {
+    if (!files) return;
+    const shrunk = await Promise.all([...files].slice(0, 4).map(f => shrinkPhoto(f)));
+    setPhotos(p => [...p, ...shrunk].slice(0, 4));
+  }
 
   async function send(text: string, confirmWarning = false) {
+    const images = photos;
+    if (!text.trim() && images.length) text = t("photoQuestion");
     if (!vehicle || busy || !text.trim()) return;
-    setQuestion("");
-    setMessages(m => [...m, { id: crypto.randomUUID(), role: "user", text }]);
-    setBusy(true);
+    setQuestion(""); setPhotos([]);
+    setMessages(m => [...m, { id: crypto.randomUUID(), role: "user", text, images }]);
+    setBusy(true); setLive([]);
+    const events: AgentEvent[] = [];
     try {
-      const reply = await api.chat({
+      const reply = await chatStream({
         vehicle_id: vehicle.vehicle_id, session_id: sessionId, message: text,
-        conversation_id: conversation.current, confirm_warning: confirmWarning,
-      });
+        conversation_id: conversation.current, confirm_warning: confirmWarning, images,
+      }, e => { events.push(e); setLive([...events]); });
       conversation.current = reply.conversation_id;
       if (reply.ticket) setTicket(reply.ticket);
-      setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", text: reply.answer, sources: reply.sources, cost: reply.cost_usd }]);
+      setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", text: reply.answer, sources: reply.sources, cost: reply.cost_usd, events }]);
     } catch (e) {
       setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", error: true, text: `Агент не ответил: ${(e as Error).message}` }]);
     } finally { setBusy(false); }
@@ -101,18 +116,29 @@ export default function MechanicPage() {
       <div className="chat-messages" ref={chatBox}>
         <div className="chat-bubble assistant-bubble">Получите результат проверки — я объясню его и найду порядок проверки в руководстве. Нормативы даю только со ссылкой на страницу.</div>
         {messages.map(m => <div key={m.id} className={`chat-bubble ${m.role === "user" ? "user-bubble" : "assistant-bubble"} ${m.error ? "error-bubble" : ""}`}>
-          {m.role === "user" ? m.text : <Markdown text={m.text}/>}
-          {!!m.sources?.length && <Sources sources={m.sources}/>}
+          {!!m.images?.length && <div className="bubble-photos">{m.images.map((src, i) => <img key={i} src={src} alt=""/>)}</div>}
+          {m.role === "user" ? m.text : <Markdown text={m.text} onCite={(manual, page) => {
+            const s = m.sources?.find(x => x.manual === manual && x.pdf_page === page);
+            if (s) setViewer(s);
+          }}/>}
+          {!!m.sources?.length && <SourceCards sources={m.sources} onOpen={setViewer}/>}
+          {!!m.events?.length && <ProgressLog events={m.events}/>}
           {m.cost !== undefined && <small className="cost-note">стоимость ответа ${m.cost.toFixed(4)}</small>}
         </div>)}
-        {busy && <div className="chat-bubble assistant-bubble typing"><Loader2 size={14} className="spin"/> Ищу в руководстве…</div>}
+        {busy && <div className="chat-bubble assistant-bubble"><LiveProgress events={live}/></div>}
       </div>
       <div className="quick-questions"><span className="eyebrow">БЫСТРЫЕ ВОПРОСЫ</span>{QUICK.map(q => <button key={q} disabled={busy} onClick={() => void send(q)}>{q}</button>)}</div>
+      {!!photos.length && <div className="photo-tray">{photos.map((src, i) => <div key={i}><img src={src} alt=""/>
+        <button aria-label={t("remove")} onClick={() => setPhotos(p => p.filter((_, j) => j !== i))}><X size={14}/></button></div>)}</div>}
       <form className="chat-composer" onSubmit={e => { e.preventDefault(); void send(question); }}>
+        <input ref={photoInput} type="file" accept="image/*" capture="environment" multiple hidden
+          onChange={e => { void addPhotos(e.target.files); e.target.value = ""; }}/>
+        <button type="button" className="icon-button camera-button" onClick={() => photoInput.current?.click()} aria-label={t("attachPhoto")}><Camera size={20}/></button>
         <input value={question} onChange={e => setQuestion(e.target.value)} placeholder={t("ask")}/>
-        <button className="send-button" type="submit" disabled={busy} aria-label="Отправить"><Send size={17}/></button>
+        <button className="send-button" type="submit" disabled={busy} aria-label={t("send")}><Send size={17}/></button>
       </form>
     </aside>
+    {viewer && <PageViewer page={viewer} onClose={() => setViewer(null)}/>}
   </div>;
 }
 
@@ -148,14 +174,4 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
     {!!ticket.spare_parts.length && <p className="muted">Запчасти: {ticket.spare_parts.join(", ")}</p>}
     {ticket.references.map(r => <p key={r.manual + r.pdf_page} className="demo-source"><BookOpen size={14}/> {r.manual} · стр. PDF {r.pdf_page}</p>)}
   </section>;
-}
-
-function Sources({ sources }: { sources: Source[] }) {
-  return <details className="sources">
-    <summary><BookOpen size={13}/> Источники ({sources.length})</summary>
-    {sources.map(s => <div key={s.manual + s.pdf_page} className="source-item">
-      <b>{s.manual}, стр. PDF {s.pdf_page}</b>{s.ocr && <span className="badge warning">скан: сверить числа</span>}
-      <blockquote>{s.excerpt}</blockquote>
-    </div>)}
-  </details>;
 }

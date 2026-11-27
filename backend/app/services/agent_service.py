@@ -1,14 +1,17 @@
 """Agent loop: the LLM picks tools until it can answer; then the answer is checked against sources."""
+import base64
 import json
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from app.agent.checks import answer_problems, render_citations
 from app.agent.tools import TICKETS_BY_VEHICLE, TOOLS, AgentState, run_tool
 from app.domain.diagnostic_rules import CONFIDENCE_MIN, URGENCY_MEANING
 from app.integrations.llm_client import LLMClient
+from app.rag import pages
 from app.repositories.vehicle_catalog import JsonVehicleCatalog
 from app.schemas.assistant import ChatRequest, ChatResponse, SourceReference, Step
 from app.schemas.vehicles import Vehicle
@@ -25,7 +28,7 @@ SYSTEM_PROMPT = """Ты — «Цифровой механик», помощни�
 {history}
 Ранее созданные заявки: {tickets}
 
-Инструменты: get_diagnosis — результат акустической проверки; search_manual — поиск по руководствам; create_ticket — заявка на дефектовку в ТОиР.
+Инструменты: get_diagnosis — результат акустической проверки; search_manual — поиск по руководствам; view_page — посмотреть страницу руководства с рисунками; create_ticket — заявка на дефектовку в ТОиР.
 
 Правила:
 1. Числа (нормативы, допуски, моменты затяжки, давления, зазоры) и порядок работ — только из фрагментов search_manual. Сразу после утверждения ставь ключ фрагмента в квадратных скобках, например [yamz236_rk:41]. Ключи бери только из результатов поиска. Фрагмент с ocr=true распознан со скана: числа из него сопровождай пометкой «сверить по странице руководства».
@@ -41,13 +44,39 @@ SYSTEM_PROMPT = """Ты — «Цифровой механик», помощни�
 6. «Запрещено выпускать в рейс / эксплуатация запрещена» пиши только если фрагмент руководства прямо это говорит, со ссылкой. Иначе формулируй как рекомендацию. Приоритеты: high — {u_high}; medium — {u_medium}; low — {u_low}.
 7. create_ticket вызывай только по команде механика. Нужна процедура именно того узла, на который указывает тип неисправности; процедура по смежному симптому (например, «двигатель работает неустойчиво» вместо системы зажигания) не годится. Если такой процедуры нет — заявку не создавай: объясни, что в руководстве на этот двигатель нет инструкции по этой неисправности, и дай текст рекомендации на дефектовку с результатом проверки. Если в диагнозе есть ticket_blocked_reason или create_ticket вернул error — объясни причину простыми словами. Если руководство прямо запрещает эксплуатацию при этой неисправности — передай цитату в operation_ban.
 8. Ответ по отклонению или технический ответ: первой строкой — короткий вердикт. Дальше разделы: Наблюдения; Гипотезы (инженерная оценка, не из руководства); Проверки; Возможный ремонт; Источник; Ограничения. Пиши коротко и просто, без JSON и без внутренних полей.
-9. Отвечай по-русски. На вопросы не о технике и не об этой машине вежливо откажись."""
+9. Фото от механика: найди в руководстве рисунок этого узла (search_manual, затем view_page) и сравни. Вывод по фото — всегда гипотеза в разделе «Гипотезы»: скажи, что именно совпадает или не совпадает, на какой рисунок и страницу опирался, и что проверить руками. Размеры и нормы по фото не определяй.
+10. Отвечай по-русски. На вопросы не о технике и не об этой машине вежливо откажись."""
 
 FIX_PROMPT = (
     "Проверка ответа не пройдена: {problems}. Перепиши ответ: каждое число — только из "
     "процитированного фрагмента со ссылкой [ключ], ключи — только из результатов поиска; "
     "если подтверждения нет, убери число и скажи, что в руководстве это не найдено."
 )
+
+
+Emit = Callable[[dict], None]
+
+
+def summarize(name: str, result: dict) -> dict:
+    """What the UI shows about a finished tool call (no manual text, just what happened)."""
+    if "error" in result:
+        return {"error": result["error"]}
+    if name == "search_manual":
+        return {"found": [{"manual": f.get("manual"), "pdf_page": f.get("pdf_page")} for f in result.get("found", [])]}
+    if name == "view_page":
+        return {"ref": result.get("ref")}
+    if name == "get_diagnosis":
+        return {k: result.get(k) for k in ("session_id", "status", "anomaly_type", "anomaly_title", "confidence")}
+    if name == "create_ticket":
+        return {"ticket_id": result.get("ticket_id"), "urgency": result.get("urgency")}
+    return {}
+
+
+def figure_count(manual_id: str, page: int) -> int:
+    try:
+        return len(pages.figures(manual_id, page))
+    except (LookupError, OSError):
+        return 0
 
 
 @dataclass
@@ -126,7 +155,9 @@ class AgentService:
         ))
         return message
 
-    async def chat(self, payload: ChatRequest) -> ChatResponse:
+    async def chat(self, payload: ChatRequest, emit: Emit | None = None) -> ChatResponse:
+        """emit(event) reports progress as it happens: thinking, tool, tool_result, checking, fixing."""
+        emit = emit or (lambda event: None)
         conv_id, conv = self._conversation(payload)
         state = conv.state
         if payload.session_id and payload.session_id != state.session_id:
@@ -135,23 +166,46 @@ class AgentService:
         text = payload.message
         if payload.confirm_warning:
             text += "\n[Механик прочитал предупреждение о качестве записи и подтверждает создание заявки.]"
-        conv.messages.append({"role": "user", "content": text})
+        if payload.images:
+            text += f"\n[Механик приложил фото: {len(payload.images)} шт.]"
+            content = [{"type": "text", "text": text}] + [
+                {"type": "image_url", "image_url": {"url": url}} for url in payload.images
+            ]
+            conv.messages.append({"role": "user", "content": content})
+        else:
+            conv.messages.append({"role": "user", "content": text})
 
         steps: list[Step] = []
         diagnosis_before, tickets_before = state.diagnosis, len(TICKETS_BY_VEHICLE[state.vehicle.vehicle_id])
+        emit({"type": "thinking"})
         message = await self._llm(conv, steps)
         for _ in range(MAX_TOOL_ROUNDS):
             if not message.get("tool_calls"):
                 break
+            images = []
             for call in message["tool_calls"]:
                 fn = call["function"]
+                try:
+                    args = json.loads(fn.get("arguments") or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                emit({"type": "tool", "name": fn["name"], "args": {k: v for k, v in args.items() if k != "references"}})
                 result = await run_tool(state, fn["name"], fn.get("arguments", ""))
+                if image := result.pop("_image", None):
+                    images.append((result["ref"], image))
+                emit({"type": "tool_result", "name": fn["name"], **summarize(fn["name"], result)})
                 steps.append(Step(name=fn["name"]))
                 conv.messages.append({
                     "role": "tool",
                     "tool_call_id": call["id"],
                     "content": json.dumps(result, ensure_ascii=False, default=str),
                 })
+            for ref, png in images:  # tool messages are text-only, so pages go in as a user message
+                conv.messages.append({"role": "user", "content": [
+                    {"type": "text", "text": f"Изображение страницы {ref} (по запросу view_page):"},
+                    {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png).decode()}},
+                ]})
+            emit({"type": "thinking"})
             message = await self._llm(conv, steps)
         if message.get("tool_calls"):  # out of rounds: force a plain answer
             message = await self._llm(conv, steps, tool_choice="none")
@@ -171,8 +225,10 @@ class AgentService:
             ensure_ascii=False,
             default=str,
         )
+        emit({"type": "checking"})
         problems = answer_problems(answer, state.hits, trusted)
         if problems:
+            emit({"type": "fixing", "problems": problems})
             conv.messages.append({"role": "user", "content": FIX_PROMPT.format(problems="; ".join(problems))})
             answer = (await self._llm(conv, steps, "none", purpose="llm:fix")).get("content") or answer
             problems = answer_problems(answer, state.hits, trusted)
@@ -185,7 +241,8 @@ class AgentService:
             conversation_id=conv_id,
             answer=answer,
             sources=[
-                SourceReference(manual=h.short, pdf_page=h.pdf_page, excerpt=h.text, ocr=h.ocr)
+                SourceReference(manual_id=h.manual_id, manual=h.short, pdf_page=h.pdf_page, excerpt=h.text,
+                                ocr=h.ocr, figures=figure_count(h.manual_id, h.pdf_page))
                 for h in cited
             ],
             diagnosis=state.diagnosis if state.diagnosis is not diagnosis_before else None,

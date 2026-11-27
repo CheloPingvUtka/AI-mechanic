@@ -14,6 +14,7 @@ class Manual:
     title: str
     engines: tuple[str, ...]
     short: str = ""
+    official_url: str | None = None  # manufacturer's page for this document, if one exists
 
     def __post_init__(self):
         if not self.short:

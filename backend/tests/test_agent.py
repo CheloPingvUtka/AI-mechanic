@@ -140,7 +140,10 @@ async def test_agent_loop_runs_tools_and_rejects_unsourced_numbers(monkeypatch):
         {"role": "assistant", "content": "Момент 421-461 Н·м [yamz236_rk:41]."},
     ])
     service = AgentService(catalog=FakeCatalog(), llm=llm)
-    response = await service.chat(ChatRequest(vehicle_id="M333YK47", message="Какой момент затяжки?"))
+    events = []
+    response = await service.chat(ChatRequest(vehicle_id="M333YK47", message="Какой момент затяжки?"), events.append)
+    assert [e["type"] for e in events] == ["thinking", "tool", "tool_result", "thinking", "checking", "fixing"]
+    assert events[1]["args"] == {"query": "момент затяжки"}
 
     assert response.answer == "Момент 421-461 Н·м (236.01.01 РК, стр. 41)."
     assert [s.manual for s in response.sources] == ["236.01.01 РК"]

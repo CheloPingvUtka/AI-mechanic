@@ -15,3 +15,32 @@
 .vehicle-panel{display:grid;gap:12px}
 @media(max-width:760px){.chat-messages{max-height:none}.history-table td:nth-child(2){display:none}}
 @media(min-width:1151px){.page-grid{grid-template-columns:minmax(0,1fr) 440px}.assistant-panel{height:calc(100vh - 104px)}.chat-messages{overflow-y:auto;min-height:0}}
+.progress-live,.progress-log{display:grid;gap:6px;font-size:11px;color:#52616c}
+.progress-line{display:flex;gap:7px;align-items:flex-start;line-height:1.4}.progress-line svg{flex:none;margin-top:2px;color:#238459}
+.progress-line.bad svg{color:#c3443e}.progress-line.current{color:#df7623;font-weight:650}.progress-line.current svg{color:#df7623}
+.progress-log{margin-top:8px;border-top:1px solid #e7ebef;padding-top:8px}.progress-log summary{cursor:pointer;color:#71808b;font-weight:650}
+/* Sources as picture cards + full-screen page viewer */
+.source-cards{margin-top:12px;border-top:1px solid #e7ebef;padding-top:10px}
+.source-cards-title{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#477fa8;margin-bottom:8px}
+.source-strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x mandatory}
+.source-card{flex:0 0 172px;scroll-snap-align:start;background:#fff;border:1px solid #e1e6ea;border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.source-thumb{all:unset;cursor:pointer;position:relative;display:block;height:120px;background:#f4f6f8}
+.source-thumb img{width:100%;height:100%;object-fit:contain;display:block}
+.source-page{position:absolute;right:6px;bottom:6px;background:#172b3acc;color:#fff;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px}
+.source-meta{padding:8px;display:grid;gap:6px;font-size:11px}.source-meta b{font-size:11px;line-height:1.3}
+.source-buttons{display:flex;gap:6px}.source-buttons button{flex:1;min-height:36px;border:1px solid #dfe5e9;background:#fafbfc;border-radius:7px;font-size:11px;font-weight:650;color:#34424d}
+.source-card blockquote{margin:0 8px 8px;padding:8px;background:#f6f8fa;border-left:3px solid #c9d5de;font-size:11px;white-space:pre-wrap;max-height:200px;overflow:auto}
+.cite-chip{display:inline-flex;align-items:center;gap:3px;border:1px solid #c9dcec;background:#eaf2f8;color:#2f6690;border-radius:6px;padding:1px 6px;margin:0 2px;font-size:11px;font-weight:650;cursor:pointer;vertical-align:baseline}
+.viewer{position:fixed;inset:0;background:#0b141bcc;z-index:50;display:flex;justify-content:center;overflow:auto;padding:12px}
+.viewer-body{background:#fff;border-radius:12px;max-width:1100px;width:100%;height:max-content;padding:12px;display:grid;gap:12px}
+.viewer-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;position:sticky;top:-12px;background:#fff;padding:6px 0;z-index:1}
+.viewer-bar b{display:block;font-size:14px}.viewer-bar span{font-size:12px;color:#71808b}
+.viewer-close{border:0;background:#f2f5f7;border-radius:10px;width:52px;height:52px;display:grid;place-items:center;color:#34424d}
+.viewer-actions{display:flex;flex-wrap:wrap;gap:8px}.viewer-actions .button{min-height:48px;font-size:13px}
+.button-light{background:#eaf2f8;color:#2f6690}
+.viewer-figure,.viewer-page{width:100%;height:auto;border:1px solid #e7ebef;border-radius:8px}
+/* Photos in chat */
+.camera-button{width:40px;height:40px;border-radius:8px;background:#f2f5f7;color:#34424d}
+.photo-tray{display:flex;gap:8px;padding:0 12px}.photo-tray div{position:relative}.photo-tray img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #dfe5e9}
+.photo-tray button{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;border:0;background:#c3443e;color:#fff;display:grid;place-items:center}
+.bubble-photos{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}.bubble-photos img{width:96px;height:96px;object-fit:cover;border-radius:8px}

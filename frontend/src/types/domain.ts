@@ -42,10 +42,20 @@ export interface FleetVehicle {
 }
 
 export interface Source {
+  manual_id: string;
   manual: string;
   pdf_page: number;
   excerpt: string;
   ocr: boolean;
+  figures: number;
+}
+
+export interface Manual {
+  id: string;
+  title: string;
+  short: string;
+  engines: string[];
+  official_url: string | null;
 }
 
 export interface Ticket {
@@ -69,6 +79,14 @@ export interface ChatReply {
   cost_usd: number;
 }
 
+/** Live progress from /assistant/chat/stream. */
+export type AgentEvent =
+  | { type: "thinking" | "checking" }
+  | { type: "fixing"; problems: string[] }
+  | { type: "tool"; name: string; args: Record<string, unknown> }
+  | { type: "tool_result"; name: string; error?: string; found?: { manual: string; pdf_page: number }[];
+      ticket_id?: string; status?: string; session_id?: string };
+
 export interface ChatMessage {
   id: string;
   role: "assistant" | "user";
@@ -76,4 +94,6 @@ export interface ChatMessage {
   sources?: Source[];
   cost?: number;
   error?: boolean;
+  events?: AgentEvent[];
+  images?: string[];
 }
