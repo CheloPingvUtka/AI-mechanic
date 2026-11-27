@@ -140,7 +140,10 @@ async def test_agent_loop_runs_tools_and_rejects_unsourced_numbers(monkeypatch):
         {"role": "assistant", "content": "Момент 421-461 Н·м [yamz236_rk:41]."},
     ])
     service = AgentService(catalog=FakeCatalog(), llm=llm)
-    response = await service.chat(ChatRequest(vehicle_id="M333YK47", message="Какой момент затяжки?"))
+    events = []
+    response = await service.chat(ChatRequest(vehicle_id="M333YK47", message="Какой момент затяжки?"), events.append)
+    assert [e["type"] for e in events] == ["thinking", "tool", "tool_result", "thinking", "checking", "fixing"]
+    assert events[1]["args"] == {"query": "момент затяжки"}
 
     assert response.answer == "Момент 421-461 Н·м (236.01.01 РК, стр. 41)."
     assert [s.manual for s in response.sources] == ["236.01.01 РК"]
@@ -148,3 +151,35 @@ async def test_agent_loop_runs_tools_and_rejects_unsourced_numbers(monkeypatch):
     assert response.cost_usd == pytest.approx(0.003)
     assert llm.calls[-1][1] == "none"  # the fix-up pass may not call tools
     agent_service.CONVERSATIONS.clear()
+
+
+async def test_llm_post_retries_connection_drops(monkeypatch):
+    import httpx
+
+    from app.integrations import llm_client
+
+    calls = []
+
+    class FlakyClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            calls.append(url)
+            if len(calls) < 3:
+                raise httpx.ConnectError("drop")
+            return httpx.Response(200, json={"ok": True})
+
+    async def no_sleep(_):
+        return None
+
+    monkeypatch.setattr(llm_client.httpx, "AsyncClient", FlakyClient)
+    monkeypatch.setattr(llm_client.asyncio, "sleep", no_sleep)
+    response = await llm_client.post_with_retry("http://x", {}, {}, 1)
+    assert response.status_code == 200 and len(calls) == 3

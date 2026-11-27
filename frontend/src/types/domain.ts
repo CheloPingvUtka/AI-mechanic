@@ -19,6 +19,7 @@ export interface Diagnosis {
 export interface Assessment extends Diagnosis {
   confidence_threshold: number;
   ticket_blocked_reason: string | null;
+  block_code: "bad_recording" | "no_anomaly" | "no_fault_code" | "low_confidence" | "fuel_mismatch" | "needs_confirmation" | null;
   needs_warning_confirmation: boolean;
   urgency: { level: Urgency; meaning: string } | null;
 }
@@ -38,14 +39,49 @@ export interface FleetVehicle {
   sessions: Session[];
   state: FleetState;
   urgency: Urgency | null;
+  code: string;
   reason: string;
 }
 
 export interface Source {
+  manual_id: string;
   manual: string;
   pdf_page: number;
   excerpt: string;
   ocr: boolean;
+  figures: number;
+}
+
+export interface Manual {
+  id: string;
+  title: string;
+  short: string;
+  engines: string[];
+  official_url: string | null;
+  official_note: string | null;
+}
+
+export interface PlanItem {
+  id: number;
+  text: string;
+  preliminary: boolean;
+  ref: string | null;
+  quote: string | null;
+  manual_id: string | null;
+  manual: string | null;
+  pdf_page: number | null;
+  figures: number;
+  measure: { name: string; unit: string; min: number | null; max: number | null } | null;
+}
+
+export interface WorkPlan {
+  tools: PlanItem[];
+  materials: PlanItem[];
+  safety: PlanItem[];
+  steps: PlanItem[];
+  status: "building" | "ready" | "failed";
+  note: string;
+  version: number;
 }
 
 export interface Ticket {
@@ -69,6 +105,14 @@ export interface ChatReply {
   cost_usd: number;
 }
 
+/** Live progress from /assistant/chat/stream. */
+export type AgentEvent =
+  | { type: "thinking" | "checking" }
+  | { type: "fixing"; problems: string[] }
+  | { type: "tool"; name: string; args: Record<string, unknown> }
+  | { type: "tool_result"; name: string; error?: string; found?: { manual: string; pdf_page: number }[];
+      ticket_id?: string; status?: string; session_id?: string };
+
 export interface ChatMessage {
   id: string;
   role: "assistant" | "user";
@@ -76,4 +120,6 @@ export interface ChatMessage {
   sources?: Source[];
   cost?: number;
   error?: boolean;
+  events?: AgentEvent[];
+  images?: string[];
 }

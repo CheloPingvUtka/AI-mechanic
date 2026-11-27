@@ -9,10 +9,10 @@ import pazUrl from "../static/paz-3205.png";
  * Чтобы добавить новую модель — положите файл в assets/vehicles и добавьте строку.
  */
 const PHOTOS: { match: RegExp; src: string }[] = [
-  { match: /маз[\s-]/i, src: mazUrl },
-  { match: /патриот|/i, src: uazUrl },
-  { match: /урал[\s-]/i, src: uralUrl },
-  { match: /паз[\s-]/i, src: pazUrl },
+  { match: /маз/i, src: mazUrl },
+  { match: /патриот/i, src: uazUrl },
+  { match: /урал/i, src: uralUrl },
+  { match: /паз/i, src: pazUrl },
 ];
 
 export function getVehiclePhoto(

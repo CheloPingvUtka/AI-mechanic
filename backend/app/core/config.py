@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "deepseek/deepseek-v4.1-flash"
     llm_timeout_seconds: float = 90.0
+    stt_model: str = "google/gemini-3.5-flash-lite"  # speech recognition: audio in, text out
+    tts_model: str = "openai/gpt-audio"  # reads Uzbek and Korean verbatim
+    tts_model_ru: str = "openai/gpt-audio-mini"  # cheaper; verbatim in Russian, paraphrases Uzbek
     llm_max_tokens: int = 4000  # one call; caps cost and latency if the model runs away
     tessdata_dir: str = ""  # folder with rus.traineddata, if not in the system tessdata
 

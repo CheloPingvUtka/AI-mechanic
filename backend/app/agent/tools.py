@@ -1,5 +1,6 @@
 """Agent tools: diagnosis, manual search, defect ticket. The LLM decides which to call;
 the product rules (domain/diagnostic_rules.py) and source checks are enforced here, not in the prompt."""
+import asyncio
 import json
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -8,6 +9,7 @@ import httpx
 from pydantic import ValidationError
 
 from app.agent.checks import numbers, quote_in
+from app.agent.plan import WorkPlan
 from app.domain.diagnostic_rules import (
     OPERATION_BAN,
     URGENCY_MEANING,
@@ -17,6 +19,7 @@ from app.domain.diagnostic_rules import (
 )
 from app.integrations.mock_ml_client import MockMLClient
 from app.integrations.mock_toir_client import MockToirClient
+from app.rag import pages
 from app.rag.search import Hit, get_index
 from app.schemas.diagnostics import DiagnoseRequest, DiagnoseResponse
 from app.schemas.tickets import Reference, TicketCreate
@@ -33,9 +36,22 @@ class AgentState:
     diagnosis: DiagnoseResponse | None = None
     hits: dict[str, Hit] = field(default_factory=dict)
     warning_confirmed: bool = False  # set by the mechanic's explicit confirmation in the UI
+    plan: "WorkPlan | None" = None  # filled by the background plan builder (services/plan_service.py)
 
 
 TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "view_page",
+            "description": (
+                "Посмотреть изображение страницы руководства: рисунки, чертежи, схемы, таблицы. Нужен, чтобы "
+                "сравнить фото механика с чертежом, найти деталь на рисунке или прочитать таблицу. "
+                "ref — ключ страницы из search_manual. Изображение придёт следующим сообщением."
+            ),
+            "parameters": {"type": "object", "properties": {"ref": {"type": "string"}}, "required": ["ref"]},
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -208,7 +224,24 @@ async def create_ticket(
     return {"ticket_id": created.ticket_id, "urgency": level, "urgency_meaning": URGENCY_MEANING[level]}
 
 
-HANDLERS = {"get_diagnosis": get_diagnosis, "search_manual": search_manual, "create_ticket": create_ticket}
+async def view_page(state: AgentState, ref: str) -> dict:
+    """The page image goes to the model as a separate message (tool results are text only)."""
+    hit = state.hits.get(ref)
+    if hit is None:
+        return {"error": f"Страница {ref} не из результатов search_manual — сначала найдите её поиском."}
+    try:
+        png = await asyncio.to_thread(pages.page_png, hit.manual_id, hit.pdf_page, 1000)
+    except (LookupError, OSError) as exc:
+        return {"error": f"Не удалось открыть страницу: {exc}"}
+    return {"ok": True, "ref": ref, "note": "Изображение страницы приложено следующим сообщением.", "_image": png}
+
+
+HANDLERS = {
+    "get_diagnosis": get_diagnosis,
+    "search_manual": search_manual,
+    "view_page": view_page,
+    "create_ticket": create_ticket,
+}
 
 
 async def run_tool(state: AgentState, name: str, arguments: str) -> dict:
