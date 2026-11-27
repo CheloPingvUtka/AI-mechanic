@@ -58,3 +58,6 @@ embeddings/
 *.faiss
 *.pkl
 *.pickle
+
+# Local database and photos (repair sessions, service book)
+backend/data/

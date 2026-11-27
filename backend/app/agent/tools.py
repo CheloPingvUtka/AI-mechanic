@@ -2,7 +2,6 @@
 the product rules (domain/diagnostic_rules.py) and source checks are enforced here, not in the prompt."""
 import asyncio
 import json
-from collections import defaultdict
 from dataclasses import dataclass, field
 
 import httpx
@@ -21,12 +20,10 @@ from app.integrations.mock_ml_client import MockMLClient
 from app.integrations.mock_toir_client import MockToirClient
 from app.rag import pages
 from app.rag.search import Hit, get_index
+from app.repositories import store
 from app.schemas.diagnostics import DiagnoseRequest, DiagnoseResponse
 from app.schemas.tickets import Reference, TicketCreate
 from app.schemas.vehicles import Vehicle
-
-# shortcut: tickets live in process memory and vanish on restart; move to a DB when history matters.
-TICKETS_BY_VEHICLE: dict[str, list[dict]] = defaultdict(list)
 
 
 @dataclass
@@ -37,6 +34,7 @@ class AgentState:
     hits: dict[str, Hit] = field(default_factory=dict)
     warning_confirmed: bool = False  # set by the mechanic's explicit confirmation in the UI
     plan: "WorkPlan | None" = None  # filled by the background plan builder (services/plan_service.py)
+    conversation_id: str = ""  # also the work id; used to file disputes and book entries
 
 
 TOOLS = [
@@ -142,7 +140,18 @@ async def get_diagnosis(state: AgentState, session_id: str | None = None) -> dic
         return {"error": f"Проверки {sid} у машины {state.vehicle.vehicle_id} нет."}
     d = await MockMLClient().diagnose(DiagnoseRequest(vehicle_id=state.vehicle.vehicle_id, session_id=sid))
     state.diagnosis, state.session_id = d, sid
-    return {**d.model_dump(), **assess(d, state.vehicle.fuel, state.warning_confirmed)}
+    verdict = assess(d, state.vehicle.fuel, state.warning_confirmed)
+    log_check_disputes(d, verdict, state.conversation_id)
+    return {**d.model_dump(), **verdict}
+
+
+def log_check_disputes(d: DiagnoseResponse, verdict: dict, work_id: str = "") -> None:
+    """A check the product refuses to act on is worth a look by the chief mechanic (once per check)."""
+    kind = {"low_confidence": "low_confidence", "fuel_mismatch": "fuel_mismatch"}.get(verdict.get("block_code") or "")
+    if kind:
+        detail = f"{d.session_id}: {d.anomaly_type} {d.anomaly_title}, уверенность {d.confidence}"
+        if not store.has_dispute(kind, d.vehicle_id, detail):
+            store.add_dispute(kind, detail, d.vehicle_id, work_id or None, verdict)
 
 
 async def search_manual(state: AgentState, query: str) -> dict:
@@ -202,6 +211,8 @@ async def create_ticket(
             cited[hit.ref] = hit
             ban = {"manual": hit.manual, "pdf_page": hit.pdf_page, "quote": quote}
     if errors:
+        store.add_dispute("ticket_rejected", "; ".join(errors), d.vehicle_id, state.conversation_id or None,
+                          {"conclusion": conclusion, "operations": operations, "references": references})
         return {"error": "Заявка не создана: " + "; ".join(errors)}
 
     level = urgency(d.anomaly_type, d.anomaly_score, operation_banned=ban is not None)
@@ -220,7 +231,8 @@ async def create_ticket(
     except httpx.HTTPError as exc:
         return {"error": f"ТОиР не принял заявку: {exc}"}
     ticket = {"ticket_id": created.ticket_id, **payload.model_dump(), "operation_ban": ban}
-    TICKETS_BY_VEHICLE[d.vehicle_id].append(ticket)
+    store.add_entry(d.vehicle_id, "ticket", f"Заявка {created.ticket_id}", conclusion, ticket,
+                    work_id=state.conversation_id or None, session_id=d.session_id)
     return {"ticket_id": created.ticket_id, "urgency": level, "urgency_meaning": URGENCY_MEANING[level]}
 
 

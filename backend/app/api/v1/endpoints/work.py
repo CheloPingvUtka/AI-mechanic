@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.repositories import store
 from app.services import plan_service
 
 router = APIRouter()
@@ -26,17 +27,52 @@ async def start_work(payload: WorkStart):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.get("/{work_id}", summary="Текущий рабочий план")
+class Progress(BaseModel):
+    steps: dict[str, dict] = Field(default_factory=dict, description="{step_id: {done, value}}")
+    checks: dict[str, bool] = Field(default_factory=dict, description="{item_id: ticked} for prep/quality lists")
+    stage: Literal["prep", "work", "check", "after"] | None = None
+
+
+@router.get("", summary="Сохранённые ремонтные сессии (status=active — незавершённые)")
+def list_works(vehicle_id: str | None = None, status: Literal["active", "done", "chat"] | None = None):
+    return store.list_works(vehicle_id, status)
+
+
+@router.get("/{work_id}", summary="Ремонтная сессия целиком: план, отметки, чат — чтобы продолжить")
 def get_work(work_id: str):
-    work = plan_service.WORKS.get(work_id)
-    if work is None:
+    work = plan_service.get_work(work_id)
+    saved = store.load_work(work_id)
+    if work is None or saved is None:
         raise HTTPException(status_code=404, detail="Нет такой работы")
-    return work.plan.snapshot()
+    data = saved["data"]
+    return {
+        "work_id": work_id, "vehicle_id": saved["vehicle_id"], "session_id": saved["session_id"],
+        "status": saved["status"], "lang": saved["lang"], "plan": work.plan.snapshot(),
+        "progress": data.get("progress") or {}, "diagnosis": data.get("diagnosis"), "chat": data.get("chat") or [],
+        "created_at": saved["created_at"], "updated_at": saved["updated_at"],
+    }
+
+
+@router.put("/{work_id}/progress", summary="Сохранить отметки, замеры и этап")
+def save_progress(work_id: str, payload: Progress):
+    try:
+        store.update_work_data(work_id, progress=payload.model_dump())
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.post("/{work_id}/finish", summary="Завершить ремонт: дефектовка, работы и рекомендации — в сервисную книжку")
+def finish_work(work_id: str):
+    try:
+        return {"entries": plan_service.finish(work_id)}
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/{work_id}/stream", summary="План и ход его сборки (SSE): всё с начала, потом вживую")
 async def stream_work(work_id: str):
-    work = plan_service.WORKS.get(work_id)
+    work = plan_service.get_work(work_id)
     if work is None:
         raise HTTPException(status_code=404, detail="Нет такой работы")
     queue: asyncio.Queue[dict] = asyncio.Queue()

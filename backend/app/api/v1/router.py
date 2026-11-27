@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     assistant,
+    book,
     diagnostics,
     fleet,
     manuals,
@@ -20,3 +21,4 @@ api_router.include_router(fleet.router, prefix="/fleet", tags=["fleet"])
 api_router.include_router(manuals.router, prefix="/manuals", tags=["manuals"])
 api_router.include_router(work.router, prefix="/work", tags=["work"])
 api_router.include_router(voice.router, prefix="/voice", tags=["voice"])
+api_router.include_router(book.router, tags=["book"])

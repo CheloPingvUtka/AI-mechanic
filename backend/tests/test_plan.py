@@ -34,3 +34,15 @@ def test_replace_swaps_preliminary_list_and_skips_duplicates():
     update_plan(plan, HITS, "tools", False, [{"text": "Контрольный манометр", "ref": "yamz236_re:19",
                                               "quote": "Давление масла на прогретом двигателе"}], replace=True)
     assert [(i.text, i.preliminary) for i in plan.tools] == [("Контрольный манометр", False)]
+
+
+def test_tolerance_bounds_count_as_from_the_fragment():
+    hits = {"yamz236_re:37": Hit("yamz236_re", "236-3902150-Б РЭ", 37, 1.0,
+                                 "отрегулировать на давление начала впрыскивания 22,6+0,8 МПа (230+8 кгс/см2)")}
+    plan = WorkPlan()
+    item = {"text": "Проверить давление начала впрыскивания", "ref": "yamz236_re:37",
+            "quote": "давление начала впрыскивания 22,6+0,8 МПа",
+            "measure": {"name": "Давление", "unit": "МПа", "min": 22.6, "max": 23.4}}
+    assert update_plan(plan, hits, "steps", False, [item])["accepted"] == 1
+    item["measure"] = {"name": "Давление", "unit": "МПа", "min": 22.6, "max": 25}
+    assert update_plan(plan, hits, "steps", False, [{**item, "text": "Ещё раз"}])["rejected"]

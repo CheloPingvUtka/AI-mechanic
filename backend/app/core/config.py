@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     tts_model_ru: str = "openai/gpt-audio-mini"  # cheaper; verbatim in Russian, paraphrases Uzbek
     llm_max_tokens: int = 4000  # one call; caps cost and latency if the model runs away
     tessdata_dir: str = ""  # folder with rus.traineddata, if not in the system tessdata
+    data_dir: str = "data"  # SQLite + photos (repair sessions, service book); outside Git
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

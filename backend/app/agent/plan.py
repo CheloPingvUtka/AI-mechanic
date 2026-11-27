@@ -1,4 +1,7 @@
-"""Work plan for one check, filled in the background: what to prepare, then steps from the manual.
+"""Work plan for one check, filled in the background, in three stages:
+1. Подготовка: tools, materials, safety, what to remove (disassembly), preparing the vehicle and bay (prep);
+2. Работа: steps from the manual;
+3. Проверка: quality checklist after the repair; then aftercare recommendations.
 
 Preliminary items (the model's engineering experience, shown as such) may not contain numbers.
 Confirmed items and every step need a verbatim quote from a retrieved fragment; numbers in their
@@ -11,7 +14,8 @@ from dataclasses import asdict, dataclass, field
 from app.agent.checks import numbers, quote_in
 from app.rag import pages
 
-SECTIONS = ("tools", "materials", "safety", "steps")
+SECTIONS = ("tools", "materials", "safety", "disassembly", "prep", "steps", "quality", "aftercare")
+MANUAL_ONLY = ("steps",)  # instructions themselves come only from the manual
 _ids = itertools.count(1)
 
 
@@ -43,7 +47,11 @@ class WorkPlan:
     tools: list[PlanItem] = field(default_factory=list)
     materials: list[PlanItem] = field(default_factory=list)
     safety: list[PlanItem] = field(default_factory=list)
+    disassembly: list[PlanItem] = field(default_factory=list)
+    prep: list[PlanItem] = field(default_factory=list)
     steps: list[PlanItem] = field(default_factory=list)
+    quality: list[PlanItem] = field(default_factory=list)
+    aftercare: list[PlanItem] = field(default_factory=list)
     status: str = "building"  # building | ready | failed
     note: str = ""
     note_code: str = ""  # set when no plan is needed (block code), so the UI can translate the note
@@ -52,17 +60,31 @@ class WorkPlan:
     def snapshot(self) -> dict:
         return asdict(self)
 
+    @classmethod
+    def from_snapshot(cls, data: dict) -> "WorkPlan":
+        def item(raw: dict) -> PlanItem:
+            measure = raw.get("measure")
+            return PlanItem(**{**raw, "measure": Measure(**measure) if measure else None})
+        lists = {name: [item(i) for i in data.get(name) or []] for name in SECTIONS}
+        scalars = {k: data[k] for k in ("status", "note", "note_code", "version") if k in data}
+        return cls(**lists, **scalars)
+
 
 UPDATE_PLAN = {
     "type": "function",
     "function": {
         "name": "update_plan",
         "description": (
-            "Добавить или заменить пункты рабочего плана механика. Разделы: tools — инструмент и приспособления, "
-            "materials — запчасти и расходники, safety — меры безопасности, steps — шаги проверки/ремонта по порядку. "
-            "preliminary=true — предварительно, по инженерному опыту: без ref и без чисел. preliminary=false — "
-            "из руководства: ref и дословная quote из найденного фрагмента; числа в тексте и границы measure — "
-            "только из этого фрагмента. steps всегда preliminary=false. replace=true заменяет весь раздел."
+            "Добавить или заменить пункты рабочего плана механика. Этап 1 «Подготовка»: tools — инструмент и "
+            "приспособления; materials — запчасти и расходники; safety — меры безопасности; disassembly — что снять "
+            "или разобрать, чтобы добраться до узла; prep — подготовка машины и рабочего места, по порядку. Этап 2 "
+            "«Работа»: steps — шаги проверки/ремонта по порядку. Этап 3 «Проверка»: quality — контрольный список "
+            "после ремонта (работы выполнены, детали установлены правильно, крепления проверены, нет посторонних "
+            "предметов, двигатель готов к запуску). После: aftercare — что контролировать после ремонта, признаки "
+            "неудачного ремонта, через какой пробег перепроверить, профилактика. preliminary=true — по инженерному "
+            "опыту: без ref и без чисел. preliminary=false — из руководства: ref и дословная quote из найденного "
+            "фрагмента; числа в тексте и границы measure — только из этого фрагмента. steps всегда "
+            "preliminary=false. replace=true заменяет весь раздел."
         ),
         "parameters": {
             "type": "object",
@@ -109,12 +131,20 @@ FINISH_PLAN = {
 }
 
 
+def bound_from(bound: float, allowed: set[str]) -> bool:
+    """A norm bound is from the fragment if it is written there or is a ± tolerance of numbers written
+    there (e.g. «22,6+0,8 МПа» gives 22.6…23.4)."""
+    values = {float(x) for x in allowed}
+    return bound in values or any(abs(a + b - bound) < 1e-6 or abs(a - b - bound) < 1e-6
+                                  for a in values for b in values if a != b)
+
+
 def check_item(raw: dict, preliminary: bool, section: str, hits: dict) -> tuple[PlanItem | None, str | None]:
     text = (raw.get("text") or "").strip()
     if not text:
         return None, "пустой пункт"
     if preliminary:
-        if section == "steps":
+        if section in MANUAL_ONLY:
             return None, f"«{text[:40]}»: шаги — только из руководства (preliminary=false)"
         if numbers(text):
             return None, f"«{text[:40]}»: в предварительном пункте не должно быть чисел"
@@ -123,7 +153,8 @@ def check_item(raw: dict, preliminary: bool, section: str, hits: dict) -> tuple[
     if hit is None:
         return None, f"«{text[:40]}»: ref не из результатов search_manual"
     if not quote_in(raw.get("quote") or "", hit.text):
-        return None, f"«{text[:40]}»: цитата не совпадает с фрагментом {hit.ref} дословно"
+        return None, (f"«{text[:40]}»: цитата не совпадает с фрагментом {hit.ref} дословно — скопируй кусок "
+                      "текста фрагмента символ в символ (15–200 знаков) или убери пункт")
     allowed = numbers(hit.text)
     loose = numbers(text) - allowed
     if loose:
@@ -133,7 +164,7 @@ def check_item(raw: dict, preliminary: bool, section: str, hits: dict) -> tuple[
         bounds = [b for b in (m.get("min"), m.get("max")) if b is not None]
         if not bounds:
             return None, f"«{text[:40]}»: у замера нет нормы (min/max)"
-        if any(float(b) not in {float(x) for x in allowed} for b in bounds):
+        if any(not bound_from(float(b), allowed) for b in bounds):
             return None, f"«{text[:40]}»: норма замера не из фрагмента {hit.ref}"
         measure = Measure(name=m.get("name", ""), unit=m.get("unit", ""), min=m.get("min"), max=m.get("max"))
     try:

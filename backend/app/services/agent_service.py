@@ -5,13 +5,16 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 from app.agent.checks import answer_problems, render_citations
-from app.agent.tools import TICKETS_BY_VEHICLE, TOOLS, AgentState, run_tool
+from app.agent.plan import WorkPlan
+from app.agent.tools import TOOLS, AgentState, run_tool
 from app.domain.diagnostic_rules import CONFIDENCE_MIN, URGENCY_MEANING
 from app.integrations.llm_client import LLMClient
 from app.rag import pages
+from app.rag.search import Hit
+from app.repositories import store
 from app.repositories.vehicle_catalog import JsonVehicleCatalog
 from app.schemas.assistant import (
     LANG_RULE,
@@ -21,6 +24,7 @@ from app.schemas.assistant import (
     SourceReference,
     Step,
 )
+from app.schemas.diagnostics import DiagnoseResponse
 from app.schemas.vehicles import Vehicle
 
 MAX_TOOL_ROUNDS = 6
@@ -90,10 +94,48 @@ def figure_count(manual_id: str, page: int) -> int:
 class Conversation:
     state: AgentState
     messages: list[dict] = field(default_factory=list)
+    lang: str = "ru"
+    transcript: list[dict] = field(default_factory=list)  # what the mechanic saw: text, sources, ticket
 
 
-# shortcut: conversations live in process memory; one backend worker only. Move to Redis/DB for scale.
+# Working copies live in memory (one backend worker) and are written through to the store, so a
+# repair can be resumed after a restart or from another device.
 CONVERSATIONS: dict[str, Conversation] = {}
+
+
+def save_conversation(conv_id: str, conv: Conversation, status: str | None = None, **extra) -> None:
+    """Write the working copy through to the store (plan and progress are kept if already saved)."""
+    st = conv.state
+    saved = store.load_work(conv_id)
+    data = (saved or {}).get("data", {}) | {
+        "messages": conv.messages,
+        "hits": [asdict(h) for h in st.hits.values()],
+        "diagnosis": st.diagnosis.model_dump() if st.diagnosis else None,
+        "plan": st.plan.snapshot() if st.plan else (saved or {}).get("data", {}).get("plan"),
+        "chat": conv.transcript,
+    } | extra
+    status = status or (saved["status"] if saved else ("active" if st.plan else "chat"))
+    store.save_work(conv_id, st.vehicle.vehicle_id, st.session_id, conv.lang, status, data)
+
+
+def restore_conversation(conv_id: str, catalog: JsonVehicleCatalog) -> Conversation | None:
+    saved = store.load_work(conv_id)
+    vehicle = catalog.get_vehicle(saved["vehicle_id"]) if saved else None
+    if vehicle is None:
+        return None
+    data = saved["data"]
+    state = AgentState(
+        vehicle=vehicle, session_id=saved["session_id"], conversation_id=conv_id,
+        diagnosis=DiagnoseResponse.model_validate(data["diagnosis"]) if data.get("diagnosis") else None,
+        hits={f"{h['manual_id']}:{h['pdf_page']}": Hit(**h) for h in data.get("hits", [])},
+        plan=WorkPlan.from_snapshot(data["plan"]) if data.get("plan") else None,
+    )
+    conv = Conversation(state=state, messages=data.get("messages") or [], lang=saved["lang"] or "ru",
+                        transcript=data.get("chat") or [])
+    if not conv.messages:
+        conv.messages.append({"role": "system", "content": system_prompt(vehicle, state.session_id)})
+    CONVERSATIONS[conv_id] = conv
+    return conv
 
 
 def system_prompt(vehicle: Vehicle, session_id: str) -> str:
@@ -105,7 +147,7 @@ def system_prompt(vehicle: Vehicle, session_id: str) -> str:
     )
     tickets = [
         f"{t['ticket_id']} ({t['session_id']}, {t['anomaly_type']}, {t['urgency']})"
-        for t in TICKETS_BY_VEHICLE.get(vehicle.vehicle_id, [])
+        for t in store.tickets(vehicle.vehicle_id)
     ]
     name = " ".join(x for x in (vehicle.make, vehicle.model, vehicle.vehicle_id, vehicle.garage_no) if x)
     return SYSTEM_PROMPT.format(
@@ -128,6 +170,8 @@ class AgentService:
 
     def _conversation(self, payload: ChatRequest) -> tuple[str, Conversation]:
         conv = CONVERSATIONS.get(payload.conversation_id or "")
+        if conv is None and payload.conversation_id:
+            conv = restore_conversation(payload.conversation_id, self.catalog)
         if conv and conv.state.vehicle.vehicle_id == payload.vehicle_id:
             return payload.conversation_id, conv
         vehicle = self.catalog.get_vehicle(payload.vehicle_id)
@@ -136,9 +180,10 @@ class AgentService:
         if not vehicle.sessions:
             raise LookupError(f"У {payload.vehicle_id} нет проверок.")
         session_id = payload.session_id or vehicle.sessions[-1].session_id
-        conv = Conversation(AgentState(vehicle=vehicle, session_id=session_id))
-        conv.messages.append({"role": "system", "content": system_prompt(vehicle, session_id)})
         conv_id = uuid.uuid4().hex
+        conv = Conversation(AgentState(vehicle=vehicle, session_id=session_id, conversation_id=conv_id),
+                            lang=payload.lang)
+        conv.messages.append({"role": "system", "content": system_prompt(vehicle, session_id)})
         CONVERSATIONS[conv_id] = conv
         return conv_id, conv
 
@@ -188,7 +233,7 @@ class AgentService:
             conv.messages.append({"role": "user", "content": text})
 
         steps: list[Step] = []
-        diagnosis_before, tickets_before = state.diagnosis, len(TICKETS_BY_VEHICLE[state.vehicle.vehicle_id])
+        diagnosis_before, tickets_before = state.diagnosis, len(store.tickets(state.vehicle.vehicle_id))
         emit({"type": "thinking"})
         message = await self._llm(conv, steps)
         for _ in range(MAX_TOOL_ROUNDS):
@@ -223,7 +268,7 @@ class AgentService:
             message = await self._llm(conv, steps, tool_choice="none")
 
         answer = message.get("content") or ""
-        tickets = TICKETS_BY_VEHICLE[state.vehicle.vehicle_id]
+        tickets = store.tickets(state.vehicle.vehicle_id)
         trusted = json.dumps(
             {
                 "vehicle": state.vehicle.model_dump(mode="json"),
@@ -247,10 +292,13 @@ class AgentService:
             if problems:
                 detail = ": " + "; ".join(problems) if payload.lang == "ru" else ""  # details are Russian
                 answer += f"\n\n{UNVERIFIED[payload.lang]}{detail}."
+                store.add_dispute("unverified_numbers", "; ".join(problems), state.vehicle.vehicle_id, conv_id,
+                                  {"question": payload.message, "answer": answer[:2000]})
 
         answer, cited = render_citations(answer, state.hits)
         new_ticket = tickets[-1] if len(tickets) > tickets_before else None
-        return ChatResponse(
+        conv.lang = payload.lang
+        response = ChatResponse(
             conversation_id=conv_id,
             answer=answer,
             sources=[
@@ -263,3 +311,10 @@ class AgentService:
             steps=steps,
             cost_usd=round(sum(s.cost_usd for s in steps), 6),
         )
+        conv.transcript += [
+            {"role": "user", "text": payload.message, "images": len(payload.images)},
+            {"role": "assistant", "text": answer, "sources": [x.model_dump() for x in response.sources],
+             "ticket": new_ticket, "cost": response.cost_usd},
+        ]
+        save_conversation(conv_id, conv)
+        return response
