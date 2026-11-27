@@ -1,0 +1,156 @@
+/*
+ * Карточка ТС. Цвета берутся из переменных --vc-*; если их нет — используются
+ * значения по умолчанию, так что карточку можно перекрасить из темы приложения.
+ */
+.vehicle-card {
+  --vc-bg: #fff;
+  --vc-fg: #161b22;
+  --vc-muted: #6a7382;
+  --vc-border: #e2e6ed;
+  --vc-divider: #edf0f4;
+  --vc-chip-bg: #f1f3f7;
+
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 340px;
+  overflow: hidden;
+  color: var(--vc-fg);
+  background: var(--vc-bg);
+  border: 1px solid var(--vc-border);
+  border-radius: 20px;
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.04),
+    0 12px 28px -16px rgba(16, 24, 40, 0.18);
+}
+
+/* ---------- Фото ---------- */
+.vehicle-card__photo {
+  aspect-ratio: 3 / 2;
+  background: #fff; /* часть фото — вырезанные силуэты на прозрачном/белом фоне */
+  overflow: hidden;
+}
+
+.vehicle-card__photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 60%;
+}
+
+.vehicle-card__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  color: var(--vc-muted);
+  background: var(--vc-chip-bg);
+  font-size: 0.875rem;
+}
+
+/* ---------- Гос. номер ---------- */
+.vehicle-card__plate {
+  display: flex;
+  justify-content: center;
+  padding: 20px 20px 0;
+}
+
+.vehicle-card__plate-fallback {
+  padding: 6px 14px;
+  border: 1px solid var(--vc-border);
+  border-radius: 8px;
+  background: var(--vc-chip-bg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Название ---------- */
+.vehicle-card__head {
+  padding: 16px 20px 18px;
+  text-align: center;
+}
+
+.vehicle-card__title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.vehicle-card__subtitle {
+  margin: 4px 0 0;
+  color: var(--vc-muted);
+  font-size: 0.9rem;
+}
+
+/* ---------- Характеристики ---------- */
+.vehicle-card__specs {
+  margin: 0;
+  padding: 0 20px 8px;
+}
+
+.vehicle-card__spec {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 13px 0;
+  border-top: 1px solid var(--vc-divider);
+}
+
+.vehicle-card__spec dt {
+  margin: 0;
+  color: var(--vc-muted);
+  font-size: 0.875rem;
+}
+
+.vehicle-card__spec dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.vehicle-card__fuel {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vc-chip-bg);
+  color: var(--vc-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* ---------- Узкие карточки ---------- */
+@container (max-width: 260px) {
+  .vehicle-card__plate {
+    padding: 14px 12px 0;
+  }
+  .vehicle-card__head {
+    padding: 12px 14px 14px;
+  }
+  .vehicle-card__title {
+    font-size: 1.15rem;
+  }
+  .vehicle-card__specs {
+    padding: 0 14px 4px;
+  }
+  .vehicle-card__spec {
+    grid-template-columns: 1fr;
+  }
+  .vehicle-card__spec dd {
+    justify-content: flex-start;
+    text-align: left;
+  }
+}

@@ -7,7 +7,8 @@ const resources = {
     mechanic: "Механик", systemReady: "Система доступна", selectedVehicle: "Транспортное средство",
     getResult: "Получить результат диагностики", assistant: "Помощник механика", ask: "Спросить помощника…",
     createTicket: "Создать заявку на дефектовку", normal: "Норма", anomaly: "Отклонение", check_failed: "Сбой проверки",
-    ready: "Готовы к работе", attention: "Требуют внимания", quarantine: "В карантине"
+    ready: "Готовы к работе", attention: "Требуют внимания", quarantine: "В карантине", engine: "Двигатель", garageNo: "Гаражный номер",
+    noPhoto: "Фото недоступно"
   }},
   uz: { translation: {
     workspace: "Ish joyi", fleet: "Avtopark", tickets: "Nuqson dalolatnomalari", history: "Tekshiruvlar tarixi",

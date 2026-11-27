@@ -7,6 +7,7 @@ import type { Assessment, ChatMessage, Source, Ticket } from "../../types/domain
 import StatusBadge from "../../components/ui/StatusBadge";
 import Markdown from "../../components/ui/Markdown";
 import ScoreChart, { trend } from "../../components/ui/ScoreChart";
+import VehicleCard from "../../components/ui/VehicleCard";
 
 const QUICK = ["Чем опасна эта неисправность?", "Что проверить в первую очередь?", "Можно ли своим ходом перегнать машину на базу?"];
 
@@ -26,7 +27,7 @@ export default function MechanicPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const conversation = useRef<string | null>(null);
   const chatBox = useRef<HTMLDivElement>(null);
-
+  
   // New vehicle: latest check selected, everything else starts over.
   useEffect(() => {
     setSessionId(vehicle?.sessions[vehicle.sessions.length - 1].session_id ?? "");
@@ -72,7 +73,10 @@ export default function MechanicPage() {
       <div className="page-heading"><div><p className="eyebrow">РАБОЧАЯ ЗОНА</p><h1>{t("workspace")}</h1><p className="muted">Проверка двигателя и дальнейшие действия по ремонту</p></div></div>
 
       <section className="panel vehicle-panel">
-        <div className="panel-heading"><div><p className="eyebrow">{t("selectedVehicle")}</p><h2>{vehicle.vehicle_id} · {vehicle.garage_no}</h2></div></div>
+        <div className="panel-heading"><div><p className="eyebrow">{t("selectedVehicle")}</p></div></div>
+        <VehicleCard className="selected-vehicle-card" vehicle={vehicle}
+          labels={{ engine: t("engine"), garageNo: t("garageNo") }}
+        />
         <select className="vehicle-select" value={vehicle.vehicle_id} onChange={e => setParams({ vehicle: e.target.value })} aria-label="Транспортное средство">
           {fleet.map(v => <option key={v.vehicle_id} value={v.vehicle_id}>{v.vehicle_id} · {v.garage_no} · {vehicleName(v)} · {v.engine_model}</option>)}
         </select>
