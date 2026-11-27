@@ -1,9 +1,11 @@
 README.md
 pyproject.toml
 app/__init__.py
+app/cost_report.py
 app/main.py
 app/agent/__init__.py
 app/agent/checks.py
+app/agent/plan.py
 app/agent/tools.py
 app/api/__init__.py
 app/api/v1/__init__.py
@@ -12,8 +14,11 @@ app/api/v1/endpoints/__init__.py
 app/api/v1/endpoints/assistant.py
 app/api/v1/endpoints/diagnostics.py
 app/api/v1/endpoints/fleet.py
+app/api/v1/endpoints/manuals.py
 app/api/v1/endpoints/tickets.py
 app/api/v1/endpoints/vehicles.py
+app/api/v1/endpoints/voice.py
+app/api/v1/endpoints/work.py
 app/core/config.py
 app/domain/__init__.py
 app/domain/diagnostic_rules.py
@@ -21,9 +26,11 @@ app/integrations/__init__.py
 app/integrations/llm_client.py
 app/integrations/mock_ml_client.py
 app/integrations/mock_toir_client.py
+app/integrations/speech.py
 app/rag/__init__.py
 app/rag/indexer.py
 app/rag/manuals.py
+app/rag/pages.py
 app/rag/search.py
 app/rag/text.py
 app/repositories/vehicle_catalog.py
@@ -35,6 +42,7 @@ app/schemas/vehicles.py
 app/services/__init__.py
 app/services/agent_service.py
 app/services/diagnostics_service.py
+app/services/plan_service.py
 app/services/tickets_service.py
 digital_mechanic_backend.egg-info/PKG-INFO
 digital_mechanic_backend.egg-info/SOURCES.txt
@@ -43,4 +51,6 @@ digital_mechanic_backend.egg-info/requires.txt
 digital_mechanic_backend.egg-info/top_level.txt
 tests/test_agent.py
 tests/test_diagnostic_rules.py
+tests/test_plan.py
 tests/test_rag.py
+tests/test_speech.py
