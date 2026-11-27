@@ -20,6 +20,7 @@ import httpx
 
 from app.agent.checks import numbers
 from app.core.config import settings
+from app.integrations.llm_client import LLMError, post_with_retry
 
 LANG_NAME = {"ru": "Russian", "uz": "Uzbek (write it in Latin script)", "ko": "Korean (Hangul)"}
 SAMPLE_RATE = 24000  # pcm16 from the audio models
@@ -55,8 +56,10 @@ async def transcribe(wav: bytes, lang: str) -> tuple[str, float]:
             {"type": "input_audio", "input_audio": {"data": base64.b64encode(wav).decode(), "format": "wav"}},
         ]}],
     }
-    async with httpx.AsyncClient(timeout=60) as client:
-        r = await client.post(f"{settings.llm_base_url}/chat/completions", headers=_headers(), json=body)
+    try:
+        r = await post_with_retry(f"{settings.llm_base_url}/chat/completions", _headers(), body, 60)
+    except LLMError as exc:
+        raise SpeechError(str(exc)) from exc
     if r.status_code != 200:
         raise SpeechError(f"Распознавание: {r.status_code} {r.text[:200]}")
     data = r.json()

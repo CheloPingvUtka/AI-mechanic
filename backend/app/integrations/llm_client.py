@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 
 from app.core.config import settings
@@ -9,6 +11,27 @@ _KEEP = ("role", "content", "tool_calls", "reasoning_details")
 
 class LLMError(RuntimeError):
     pass
+
+
+RETRY_STATUS = {429, 502, 503}
+
+
+async def post_with_retry(url: str, headers: dict, body: dict, timeout: float, attempts: int = 3) -> httpx.Response:
+    """POST that survives the short connection drops seen with OpenRouter. Only failures where the model
+    did not answer are retried (connection errors, 429/502/503); a call has no side effects of its own."""
+    for attempt in range(attempts):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(url, headers=headers, json=body)
+            if response.status_code not in RETRY_STATUS or attempt == attempts - 1:
+                return response
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.RemoteProtocolError) as exc:
+            if attempt == attempts - 1:
+                raise LLMError(f"LLM недоступна: {type(exc).__name__}") from exc
+        except httpx.HTTPError as exc:
+            raise LLMError(f"LLM недоступна: {type(exc).__name__}") from exc
+        await asyncio.sleep(1 + attempt * 2)
+    raise LLMError("LLM недоступна")
 
 
 class LLMClient:
@@ -32,15 +55,10 @@ class LLMClient:
             "max_tokens": settings.llm_max_tokens,
             "usage": {"include": True},
         }
-        try:
-            async with httpx.AsyncClient(timeout=settings.llm_timeout_seconds) as client:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json=body,
-                )
-        except httpx.HTTPError as exc:
-            raise LLMError(f"LLM недоступна: {type(exc).__name__}") from exc
+        response = await post_with_retry(
+            f"{self.base_url}/chat/completions", {"Authorization": f"Bearer {self.api_key}"}, body,
+            settings.llm_timeout_seconds,
+        )
         if response.status_code != 200:
             raise LLMError(f"LLM {response.status_code}: {response.text[:300]}")
         data = response.json()

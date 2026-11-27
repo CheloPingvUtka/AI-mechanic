@@ -18,16 +18,25 @@ import httpx
 
 from app.core.config import settings
 from app.domain.diagnostic_rules import CONFIDENCE_MIN, fault_mismatch
+from app.integrations import speech
 from app.rag.indexer import build
 from app.repositories.vehicle_catalog import JsonVehicleCatalog
 from app.schemas.assistant import ChatRequest, Step
+from app.services import plan_service
 from app.services.agent_service import AgentService
 
 QUESTIONS = ["Чем опасна эта неисправность?", "Можно ли своим ходом перегнать машину на базу?"]
+# Voice mode assumption: phrases read aloud (verdict, steps, answers) and recognised per check.
+VOICE_PHRASES_PER_CHECK = 5
+VOICE_SAMPLES = {
+    "ru": "Отклонение: дизельная топливоподача. Уверенность 73 процента. Приоритет средний.",
+    "uz": "Og‘ish: dizel yoqilg‘isi berish tizimi. Ishonchlilik 73 foiz. Ustuvorlik o‘rtacha.",
+}
 # Fleet assumptions from the customer's example (Q&A 26.11.2026).
 FLEET, DAYS_BETWEEN_CHECKS, QUESTIONS_PER_CHECK = 50, 14, 2.5
 DAYS_PER_MONTH = 365 / 12
 
+PLAN_TITLE = "Фоновый рабочий план (подготовка, шаги, рисунки)"
 CATEGORIES = [
     ("Выбор инструмента и поиск по руководству", lambda n: n.startswith("llm:") and n not in
      ("llm:answer", "llm:fix") and "create_ticket" not in n),
@@ -95,11 +104,31 @@ async def measure():
                       + [("ticket", "Создай заявку на дефектовку")]) for v, s in anomaly]
     jobs += [run_turns(service, v.vehicle_id, s.session_id, [(kind, f"Объясни результат проверки {s.session_id}")])
              for kind, (v, s) in (("explain_normal", normal), ("explain_failed", failed))]
+    plan_ids = [await plan_service.start(v.vehicle_id, s.session_id) for v, s in anomaly]
     runs = await asyncio.gather(*jobs)
-    return anomaly, normal, failed, runs
+    await asyncio.gather(*(plan_service.WORKS[i].task for i in plan_ids))
+    plan_costs = [plan_service.WORKS[i].cost_usd for i in plan_ids]
+    return anomaly, normal, failed, runs, plan_costs, await measure_voice()
 
 
-def report(anomaly, normal, failed, runs, index_seconds: float, usd_rub: float | None) -> str:
+async def measure_voice() -> dict:
+    """One verified spoken verdict per language, then recognition of that audio."""
+    out = {}
+    for lang, text in VOICE_SAMPLES.items():
+        speech._cache(text, lang).unlink(missing_ok=True)  # measure a real synthesis, not the cache
+        t0 = time.perf_counter()
+        try:
+            wav, tts_cost = await speech.speak(text, lang)
+        except speech.SpeechError as exc:
+            out[lang] = {"error": str(exc)}
+            continue
+        tts_seconds = time.perf_counter() - t0
+        _, stt_cost = await speech.transcribe(wav, lang)
+        out[lang] = {"tts": tts_cost, "tts_seconds": tts_seconds, "stt": stt_cost, "chars": len(text)}
+    return out
+
+
+def report(anomaly, normal, failed, runs, plan_costs, voice, index_seconds: float, usd_rub: float | None) -> str:
     turns = defaultdict(list)  # kind -> [(cost, prompt, completion, llm calls, seconds)]
     per_category = defaultdict(float)  # summed over measured anomaly scenarios
     for run in runs:
@@ -112,12 +141,14 @@ def report(anomaly, normal, failed, runs, index_seconds: float, usd_rub: float |
                     per_category[category(s.name)] += s.cost_usd
     avg = {k: [statistics.mean(col) for col in zip(*v)] for k, v in turns.items()}
     n_anomaly = len(anomaly)
+    plan_avg = statistics.mean(plan_costs) if plan_costs else 0.0
+    per_category[PLAN_TITLE] = plan_avg * n_anomaly
 
     def cost(kind):
         return avg[kind][0]
 
     scenario = {
-        "anomaly": cost("explain") + QUESTIONS_PER_CHECK * cost("question") + cost("ticket"),
+        "anomaly": cost("explain") + QUESTIONS_PER_CHECK * cost("question") + cost("ticket") + plan_avg,
         "normal": cost("explain_normal") + QUESTIONS_PER_CHECK * cost("question"),
         "check_failed": cost("explain_failed"),
     }
@@ -152,13 +183,13 @@ def report(anomaly, normal, failed, runs, index_seconds: float, usd_rub: float |
         "",
         "## Один сценарий с отклонением: разбивка по шагам",
         "",
-        (f"Среднее на сценарий из {n_anomaly} прогонов (объяснение + 2 вопроса + заявка). "
+        (f"Среднее на сценарий из {n_anomaly} прогонов (объяснение + 2 вопроса + заявка + рабочий план в фоне). "
          "В пересчёте на парк ниже — 2,5 вопроса, поэтому сумма там немного больше."),
         "",
         "| Шаг | Стоимость | Доля |",
         "|---|---:|---:|",
     ]
-    for title, _ in CATEGORIES:
+    for title in [t for t, _ in CATEGORIES] + [PLAN_TITLE]:
         c = per_category[title] / n_anomaly
         lines.append(f"| {title} | {usd(c)} | {c / measured_total:.0%} |")
     lines += [
@@ -211,6 +242,18 @@ def report(anomaly, normal, failed, runs, index_seconds: float, usd_rub: float |
         f"| Месяц | {checks_month:.0f} | {usd(per_check * checks_month)}{rub(per_check * checks_month)} |",
         f"| Год | {checks_month * 12:.0f} | {usd(per_check * checks_month * 12)}{rub(per_check * checks_month * 12)} |",
         "",
+        "## Голосовой режим (по желанию механика)",
+        "",
+        ("Озвучка — только короткие фразы (вердикт, текущий шаг, первый абзац ответа), каждая проверяется "
+         "распознаванием её же звука. Замер одной фразы-вердикта:"),
+        "",
+        "| Язык | Озвучка | Распознавание | Время озвучки |",
+        "|---|---:|---:|---:|",
+        *[(f"| {lang} | {usd(v['tts'])} | {usd(v['stt'])} | {v['tts_seconds']:.0f} с |" if "tts" in v
+           else f"| {lang} | не удалось: {v['error']} | — | — |") for lang, v in voice.items()],
+        "",
+        *voice_lines(voice, checks_month),
+        "",
         "## Разовая индексация руководств",
         "",
         (f"6 PDF (1743 страницы): извлечение текста, нарезка, OCR страниц-сканов через tesseract — "
@@ -229,6 +272,18 @@ def report(anomaly, normal, failed, runs, index_seconds: float, usd_rub: float |
     return "\n".join(lines)
 
 
+def voice_lines(voice: dict, checks_month: float) -> list[str]:
+    ok = [v for v in voice.values() if "tts" in v]
+    if not ok:
+        return []
+    per_phrase = statistics.mean(v["tts"] + v["stt"] for v in ok)
+    per_check = per_phrase * VOICE_PHRASES_PER_CHECK
+    return [(f"Допущение: в голосовом режиме {VOICE_PHRASES_PER_CHECK} озвученных и распознанных фраз на проверку "
+            f"(≈ {usd(per_phrase)} за фразу) — это {usd(per_check)} на проверку и {usd(per_check * checks_month)} "
+            "в месяц на парк, если голосом пользуются на каждой проверке. Повтор одной и той же фразы бесплатен "
+            "(кэш).")]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default="../docs/cost.md")
@@ -237,8 +292,8 @@ def main():
     t0 = time.perf_counter()
     build(Path(settings.knowledge_base_path).expanduser())
     index_seconds = time.perf_counter() - t0
-    anomaly, normal, failed, runs = asyncio.run(measure())
-    text = report(anomaly, normal, failed, runs, index_seconds, args.usd_rub)
+    anomaly, normal, failed, runs, plan_costs, voice = asyncio.run(measure())
+    text = report(anomaly, normal, failed, runs, plan_costs, voice, index_seconds, args.usd_rub)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(text, encoding="utf-8")
     print(text)

@@ -245,7 +245,8 @@ class AgentService:
             answer = (await self._llm(conv, steps, "none", purpose="llm:fix")).get("content") or answer
             problems = answer_problems(answer, state.hits, trusted)
             if problems:
-                answer += f"\n\n{UNVERIFIED[payload.lang]}: " + "; ".join(problems) + "."
+                detail = ": " + "; ".join(problems) if payload.lang == "ru" else ""  # details are Russian
+                answer += f"\n\n{UNVERIFIED[payload.lang]}{detail}."
 
         answer, cited = render_citations(answer, state.hits)
         new_ticket = tickets[-1] if len(tickets) > tickets_before else None

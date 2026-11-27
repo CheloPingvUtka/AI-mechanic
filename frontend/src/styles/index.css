@@ -133,3 +133,6 @@
   .wizard-steps{gap:4px}.wizard-step{flex-direction:column;font-size:11px;min-height:60px;gap:2px}
   .wizard-verdict{font-size:18px}.step-big .step-text{font-size:18px}.wizard-title{font-size:22px}
 }
+/* Long answers must wrap inside the chat, never widen it */
+.chat-messages>*{min-width:0}.chat-bubble{min-width:0;overflow-wrap:anywhere}.chat-messages{overflow-x:hidden}
+.source-strip{max-width:100%}
