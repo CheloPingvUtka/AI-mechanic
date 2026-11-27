@@ -106,17 +106,23 @@ class AgentService:
         CONVERSATIONS[conv_id] = conv
         return conv_id, conv
 
-    async def _llm(self, conv: Conversation, steps: list[Step], tool_choice: str = "auto") -> dict:
+    async def _llm(
+        self, conv: Conversation, steps: list[Step], tool_choice: str = "auto", purpose: str | None = None
+    ) -> dict:
+        """One LLM call. The step is named by what the model did: llm:<tools it called>, llm:answer, llm:fix."""
         t0 = time.perf_counter()
         message, usage = await self.llm.chat(conv.messages, TOOLS, tool_choice)
-        log.info("llm %.1fs in=%s out=%s calls=%s", time.perf_counter() - t0, usage.get("prompt_tokens"),
-                 usage.get("completion_tokens"), [c["function"]["name"] for c in message.get("tool_calls", [])])
+        seconds = time.perf_counter() - t0
+        called = sorted({c["function"]["name"] for c in message.get("tool_calls", [])})
+        name = purpose or ("llm:" + "+".join(called) if called else "llm:answer")
+        log.info("%s %.1fs in=%s out=%s", name, seconds, usage.get("prompt_tokens"), usage.get("completion_tokens"))
         conv.messages.append(message)
         steps.append(Step(
-            name="llm",
+            name=name,
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
             cost_usd=usage.get("cost") or 0.0,
+            seconds=round(seconds, 2),
         ))
         return message
 
@@ -168,7 +174,7 @@ class AgentService:
         problems = answer_problems(answer, state.hits, trusted)
         if problems:
             conv.messages.append({"role": "user", "content": FIX_PROMPT.format(problems="; ".join(problems))})
-            answer = (await self._llm(conv, steps, tool_choice="none")).get("content") or answer
+            answer = (await self._llm(conv, steps, "none", purpose="llm:fix")).get("content") or answer
             problems = answer_problems(answer, state.hits, trusted)
             if problems:
                 answer += "\n\n⚠ Не подтверждено руководством: " + "; ".join(problems) + "."

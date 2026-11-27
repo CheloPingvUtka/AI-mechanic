@@ -29,6 +29,7 @@ class LLMClient:
             "tools": tools,
             "tool_choice": tool_choice,
             "temperature": 0.2,
+            "max_tokens": settings.llm_max_tokens,
             "usage": {"include": True},
         }
         try:

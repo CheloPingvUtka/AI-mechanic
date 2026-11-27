@@ -21,10 +21,11 @@ class SourceReference(BaseModel):
 
 
 class Step(BaseModel):
-    name: str  # "llm" or the tool name
+    name: str  # llm:<tools called> | llm:answer | llm:fix | the tool name itself
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cost_usd: float = 0.0
+    seconds: float = 0.0
 
 
 class ChatResponse(BaseModel):

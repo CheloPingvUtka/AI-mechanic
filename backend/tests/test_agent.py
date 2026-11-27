@@ -144,7 +144,7 @@ async def test_agent_loop_runs_tools_and_rejects_unsourced_numbers(monkeypatch):
 
     assert response.answer == "Момент 421-461 Н·м (236.01.01 РК, стр. 41)."
     assert [s.manual for s in response.sources] == ["236.01.01 РК"]
-    assert [s.name for s in response.steps] == ["llm", "search_manual", "llm", "llm"]
+    assert [s.name for s in response.steps] == ["llm:search_manual", "search_manual", "llm:answer", "llm:fix"]
     assert response.cost_usd == pytest.approx(0.003)
     assert llm.calls[-1][1] == "none"  # the fix-up pass may not call tools
     agent_service.CONVERSATIONS.clear()

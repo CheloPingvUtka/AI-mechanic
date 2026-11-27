@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "deepseek/deepseek-v4.1-flash"
     llm_timeout_seconds: float = 90.0
+    llm_max_tokens: int = 4000  # one call; caps cost and latency if the model runs away
     tessdata_dir: str = ""  # folder with rus.traineddata, if not in the system tessdata
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

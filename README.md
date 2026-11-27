@@ -47,6 +47,7 @@ Frontend по умолчанию запускается Vite на <http://localh
 
 - [Frontend](frontend/README.md)
 - [Backend](backend/README.md)
+- [Калькулятор стоимости](docs/cost.md) — стоимость сценария, разбивка по шагам и пересчёт на парк
 
 ## Правила работы с данными
 
