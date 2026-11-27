@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, CalendarClock, Check, CheckCircle2, Circle, ClipboardCheck, ClipboardList, ClipboardPlus, ListChecks, Loader2, MessageCircle, RefreshCw, ShieldCheck, Stethoscope, Truck, Volume2, VolumeX, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, formatDate, useLoad, vehicleName } from "../../lib/api";
-import type { Stage } from "../../types/domain";
+import type { Session, Stage } from "../../types/domain";
 import { PageViewer, type PageRef } from "../../components/ui/SourceCards";
 import Conflicts, { concerns } from "../../components/ui/Conflicts";
 import VehiclePicker from "./VehiclePicker";
 import { LiveProgress } from "../../components/ui/AgentProgress";
 import { useCheckSession } from "../session/useCheckSession";
-import ResultCard, { verdictLine } from "../session/ResultCard";
+import ResultCard, { faultTitle, verdictLine } from "../session/ResultCard";
+import ScoreChart, { trend } from "../../components/ui/ScoreChart";
+import VehicleCard from "../../components/ui/VehicleCard";
 import TicketCard from "../session/TicketCard";
 import { inNorm, usePlan, type PlanState } from "../plan/usePlan";
 import { CheckList, preload, prepSections, StepCard, stepPicture } from "../plan/PlanPanel";
@@ -63,20 +65,11 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   const aftercare = plan.plan?.aftercare ?? [];
 
   // Resuming a saved repair: its check and chat come back, no new plan is built.
-  const fetched = useRef("");
   useEffect(() => {
-    if (vehicle && workParam && workParam !== s.workId)
-      void s.resume(workParam).then(session => { if (session) fetched.current = vehicle.vehicle_id + session; });
+    if (vehicle && workParam && workParam !== s.workId) void s.resume(workParam);
   }, [vehicle?.vehicle_id, workParam]);  // eslint-disable-line react-hooks/exhaustive-deps
-  // Entering the result screen fetches the verdict once (a new check starts a new plan).
-  useEffect(() => {
-    // (right after switching vehicles the selected check is still the previous vehicle's: wait for the new one)
-    if (screen === "result" && vehicle && !workParam && vehicle.sessions.some(x => x.session_id === s.sessionId)
-        && fetched.current !== vehicle.vehicle_id + s.sessionId) {
-      fetched.current = vehicle.vehicle_id + s.sessionId;
-      void s.runDiagnosis().then(r => { if (r && speakOn) void voice.speak(verdictLine(t, r)); });
-    }
-  }, [screen, vehicle, s.sessionId]);  // eslint-disable-line react-hooks/exhaustive-deps
+  // The check result comes when the mechanic asks for it (after the recording on the stand), never by itself.
+  const diagnose = () => void s.runDiagnosis().then(r => { if (r && speakOn) void voice.speak(verdictLine(t, r)); });
   // Open the first step not done yet (a resumed repair continues where it stopped).
   useEffect(() => {
     const i = steps.findIndex(x => !plan.stepState(x.id).done);
@@ -137,7 +130,7 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
     if (cmd?.type === "next") { if (screen === "work") workNext(); else nextScreen(); return; }
     if (cmd?.type === "back") { if (screen === "work") workBack(); else prevScreen(); return; }
     if (cmd?.type === "repeat") { void voice.speak(screen === "work" && step ? step.text : s.result ? verdictLine(t, s.result) : ""); return; }
-    if (cmd?.type === "result" && vehicle) { fetched.current = ""; go("result"); return; }
+    if (cmd?.type === "result" && vehicle) { go("result"); diagnose(); return; }
     if (cmd?.type === "ticket" || cmd?.type === "confirm") {
       go("ticket");
       if (s.result && !s.ticket && (s.result.block_code === null || (cmd.type === "confirm" && s.result.block_code === "needs_confirmation"))) {
@@ -155,7 +148,7 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   const idx = SCREENS.indexOf(screen);
   const nextScreen = () => idx < SCREENS.length - 1 && vehicle && go(SCREENS[idx + 1]);
   const prevScreen = () => idx > 0 && go(SCREENS[idx - 1]);
-  const labels = { vehicle: t("wizard.vehicle", "Машина"), result: t("wizard.result", "Результат"),
+  const labels = { vehicle: t("wizard.vehicle", "Машина"), result: t("wizard.result", "Анамнез"),
     work: t("wizard.work", "Работа"), ticket: t("wizard.ticket", "Заявка") };
   const icons = { vehicle: <Truck size={22}/>, result: <Stethoscope size={22}/>, work: <Wrench size={22}/>, ticket: <ClipboardList size={22}/> };
 
@@ -182,12 +175,14 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
       : { label: lastStep ? t("work.toCheck", "К проверке") : t("wizard.next", "Дальше"), onClick: workNext })
     : phase === "check" && aftercare.length ? { label: t("work.toAfter", "После ремонта"), onClick: workNext }
     : finishWork;
-  const retry = () => { fetched.current = ""; void s.runDiagnosis(); };
+  const getResult: Action = s.loading ? { label: t("gettingResult", "Получаем результат…"), wait: true }
+    : { label: t("getResult", "Получить результат диагностики"), onClick: diagnose, icon: <Stethoscope size={22}/> };
   const primary: Action | null = screen === "result" ? (s.result ? (s.workId ? { label: t("wizard.toWork", "Что делать — по шагам"), onClick: () => go("work"), icon: <Wrench size={22}/> } : otherVehicle)
-      : s.error ? { label: t("wizard.again", "Ещё раз"), onClick: retry, icon: <RefreshCw size={22}/> } : null)
+      : getResult)
     : screen === "work" ? workPrimary
     : screen === "ticket" ? (s.ticket ? otherVehicle : !s.result ? { label: t("getResult", "Получить результат диагностики"), onClick: () => go("result") } : ticketAction ?? otherVehicle)
     : null;
+  const pickCheck = (id: string) => { s.selectSession(id); if (workParam) setParams({ vehicle: vehicle!.vehicle_id, step: "result" }); };
   const back = screen === "result" ? () => go("vehicle") : screen === "work" ? workBack : screen === "ticket" ? () => go(s.workId ? "work" : "result") : null;
 
   return <div className={`wizard ${chatCol ? "has-chat" : ""}`} hidden={!active}>
@@ -214,21 +209,24 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
           onResume={w => setParams({ vehicle: w.vehicle_id, step: "work", work: w.id })}/>}
 
         {screen === "result" && vehicle && <>
+          <VehicleCard className="anamnesis-vehicle" vehicle={vehicle} labels={{ engine: t("engine", "Двигатель"), garageNo: t("garageNo", "Гаражный №") }}/>
           <div className="wizard-row">
-            <select className="vehicle-select" value={s.sessionId} onChange={e => { s.selectSession(e.target.value); fetched.current = ""; if (workParam) setParams({ vehicle: vehicle.vehicle_id, step: "result" }); }}
+            <select className="vehicle-select" value={s.sessionId} onChange={e => pickCheck(e.target.value)}
               aria-label={t("check", "Проверка")}>
               {[...vehicle.sessions].reverse().map(x => <option key={x.session_id} value={x.session_id}>{x.session_id} · {formatDate(x.checked_at)}</option>)}
             </select>
-            <button className="button button-light" onClick={retry} disabled={s.loading}>
-              <RefreshCw size={18} className={s.loading ? "spin" : ""}/>{t("wizard.again", "Ещё раз")}</button>
+            <button className={`button ${s.result ? "button-light" : "button-primary"}`} onClick={diagnose} disabled={s.loading}>
+              {s.result ? <RefreshCw size={18} className={s.loading ? "spin" : ""}/> : <Stethoscope size={18}/>}
+              {s.result ? t("wizard.again", "Ещё раз") : t("wizard.getShort", "Получить результат")}</button>
           </div>
           {s.loading && <p className="wizard-loading"><Loader2 size={22} className="spin"/>{t("gettingResult", "Получаем результат…")}</p>}
           {s.error && <div className="work-status bad"><AlertTriangle size={28}/><div><b>{s.error}</b></div></div>}
           {s.result && <>
             <p className={`wizard-verdict v-${s.result.status}`}>{verdictLine(t, s.result)}</p>
-            <ResultCard result={s.result} busy={s.busy} hasTicket={!!s.ticket} vehicleFuel={vehicle.fuel}
+            <ResultCard result={s.result} busy={s.busy} hasTicket={!!s.ticket} vehicleFuel={vehicle.fuel} history={vehicle.sessions}
               onTicket={confirm => { go("ticket"); void s.createTicket(confirm); }} big/>
           </>}
+          <CheckHistory sessions={vehicle.sessions} current={s.sessionId} onPick={pickCheck}/>
         </>}
 
         {screen === "work" && vehicle && (!s.workId
@@ -395,4 +393,21 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
       {afterList}
     </>}
   </>;
+}
+
+/** Anamnesis: how this engine sounded check after check; a check opens on tap. */
+function CheckHistory({ sessions, current, onPick }: { sessions: Session[]; current: string; onPick: (id: string) => void }) {
+  const { t } = useTranslation();
+  if (!sessions.length) return null;
+  return <section className="panel check-history">
+    <h2>{t("anamnesis.title", "Динамика проверок")}</h2>
+    {sessions.length > 1 && <><ScoreChart sessions={sessions}/><p className="muted">{trend(sessions, t)}</p></>}
+    <ol>{[...sessions].reverse().map(x => <li key={x.session_id}>
+      <button className={x.session_id === current ? "current" : ""} onClick={() => onPick(x.session_id)} aria-current={x.session_id === current}>
+        <span className={`dot s-${x.status}`}/>
+        <span className="ch-date">{formatDate(x.checked_at)}</span>
+        <b>{x.status === "anomaly" ? faultTitle(t, x.anomaly_type, x.anomaly_title) : t(x.status)}</b>
+        {x.status !== "check_failed" && x.anomaly_score !== null && <em>{Math.round(x.anomaly_score * 100)} %</em>}
+      </button></li>)}</ol>
+  </section>;
 }

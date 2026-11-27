@@ -1,8 +1,9 @@
-import { AlertTriangle, CheckCircle2, ClipboardCheck, ClipboardPlus, RotateCcw, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ClipboardCheck, ClipboardPlus, ListTree, RotateCcw, ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { Assessment } from "../../types/domain";
+import type { Assessment, Session } from "../../types/domain";
 import StatusBadge from "../../components/ui/StatusBadge";
+import { formatDate } from "../../lib/api";
 
 export const FAULT_TITLES: Record<string, string> = {
   F01: "Клапанный механизм", F02: "Низкое давление масла", F03: "Перегрев, охлаждающая жидкость в масле",
@@ -39,10 +40,34 @@ export function verdictLine(t: TFunction, r: Assessment): string {
   return line;
 }
 
+const pct = (x: number | null | undefined) => (x === null || x === undefined ? "—" : `${Math.round(x * 100)} %`);
+
+/** Everything the check said, in numbers, for whoever wants it; folded, so the mechanic is not buried in it. */
+function CheckDetails({ result, history }: { result: Assessment; history?: Session[] }) {
+  const { t } = useTranslation();
+  const date = history?.find(x => x.session_id === result.session_id)?.checked_at;
+  const quality = { good: t("details.qGood", "чистая"), warning: t("details.qWarning", "с помехами"), bad: t("details.qBad", "не годится") }[result.signal_quality];
+  const rows: [string, string][] = [
+    [t("details.check", "Проверка"), `${result.session_id}${date ? ` · ${formatDate(date)}` : ""}`],
+    [t("details.status", "Итог"), t(result.status)],
+    ...(result.anomaly_type ? [[t("details.fault", "Неисправность"), `${result.anomaly_type} · ${faultTitle(t, result.anomaly_type, result.anomaly_title)}`] as [string, string]] : []),
+    [t("details.score", "Отклонение звука от нормы"), pct(result.anomaly_score)],
+    [t("details.confidence", "Уверенность модели"), `${pct(result.confidence)} (${t("details.threshold", "порог")} ${pct(result.confidence_threshold)})`],
+    [t("details.quality", "Запись"), quality],
+    ...(result.urgency ? [[t("result.priority", "Приоритет"), `${urgencyLabel(t, result.urgency.level)} — ${urgencyMeaning(t, result.urgency.level)}`] as [string, string]] : []),
+    [t("details.ticket", "Заявка"), result.ticket_blocked_reason ?? t("details.ticketOk", "можно создать")],
+    [t("details.model", "Версия модели"), result.model_version],
+  ];
+  return <details className="check-details">
+    <summary><ListTree size={18}/>{t("details.title", "Подробности проверки")}<ChevronDown size={16}/></summary>
+    <dl>{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+  </details>;
+}
+
 /** Verdict card: status, fault, confidence, priority, and why a ticket is or is not possible. */
-export default function ResultCard({ result, busy, hasTicket, vehicleFuel, onTicket, big = false }: {
+export default function ResultCard({ result, busy, hasTicket, vehicleFuel, onTicket, big = false, history }: {
   result: Assessment; busy: boolean; hasTicket: boolean; vehicleFuel: string;
-  onTicket: (confirmWarning: boolean) => void; big?: boolean;
+  onTicket: (confirmWarning: boolean) => void; big?: boolean; history?: Session[];
 }) {
   const { t } = useTranslation();
   const code = result.block_code;
@@ -81,5 +106,6 @@ export default function ResultCard({ result, busy, hasTicket, vehicleFuel, onTic
       {!hasTicket && code === "needs_confirmation" && <button className="button button-primary button-large" disabled={busy} onClick={() => onTicket(true)}>
         <ClipboardCheck size={18}/>{t("result.confirmTicket", "Подтверждаю, создать заявку")}</button>}
     </>}
+    <CheckDetails result={result} history={history}/>
   </section>;
 }
