@@ -50,16 +50,15 @@ export default function ChatPanel({ s, engine, onOpen, onSpeak, voice, heard = "
         {m.role === "user" ? m.text : <Markdown text={m.text} onCite={(manual, page) => {
           const src = m.sources?.find(x => x.manual === manual && x.pdf_page === page);
           if (src) onOpen(withExcerpt(src));
-        }} steps={m.error ? undefined : { sources: m.sources, onOpen, busy: s.busy,
+        }} steps={m.error ? undefined : { sources: m.sources, figures: m.figures, onOpen, busy: s.busy,
           onExplain: (n, text) => void s.send(t("chat.explainStep", "Объясни подробнее шаг {{n}}: {{text}}", { n, text })) }}/>}
         <Conflicts items={m.contradictions} onOpen={onOpen}/>
         {!!m.sources?.length && <SourceCards sources={m.sources} onOpen={onOpen}/>}
-        {!!m.events?.length && <ProgressLog events={m.events}/>}
+        {!!m.events?.length && <ProgressLog events={m.events} onOpen={onOpen}/>}
         {m.role === "assistant" && !m.error && onSpeak && <button className="speak-button" onClick={() => onSpeak(speakable(m.text))}>
           <Volume2 size={15}/>{t("voice.listen", "Прослушать")}</button>}
-        {m.cost !== undefined && <small className="cost-note">{t("chat.cost", "стоимость ответа")} ${m.cost.toFixed(4)}</small>}
       </div>)}
-      {s.busy && <div className="chat-bubble assistant-bubble"><LiveProgress events={s.live}/></div>}
+      {s.busy && <div className="chat-bubble assistant-bubble"><LiveProgress events={s.live} onOpen={onOpen}/></div>}
     </div>
     <div className="quick-questions"><span className="eyebrow">{t("chat.quick", "БЫСТРЫЕ ВОПРОСЫ")}</span>
       {quick.map(q => <button key={q} disabled={s.busy} onClick={() => void s.send(q)}>{q}</button>)}</div>

@@ -9,7 +9,7 @@ export type PageRef = { manual_id: string; manual: string; pdf_page: number; fig
 
 export const pageImage = (r: PageRef, w = 1000) =>
   apiUrl(`/manuals/${r.manual_id}/pages/${r.pdf_page}.png?w=${w}${r.hl ? `&hl=${encodeURIComponent(r.hl.slice(0, 600))}` : ""}`);
-export const figureImage = (r: PageRef, i: number, w = 700) =>
+export const figureImage = (r: { manual_id: string; pdf_page: number }, i: number, w = 700) =>
   apiUrl(`/manuals/${r.manual_id}/pages/${r.pdf_page}/figures/${i}.png?w=${w}`);
 export const pdfLink = (r: PageRef) => apiUrl(`/manuals/${r.manual_id}/pdf#page=${r.pdf_page}`);
 /** Best small picture for a page: its first figure, otherwise the page itself. */

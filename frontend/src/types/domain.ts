@@ -71,8 +71,13 @@ export interface PlanItem {
   manual: string | null;
   pdf_page: number | null;
   figures: number;
+  figure?: number | null;       // the drawing the model chose for this step (on figure_page); null = none fits
+  figure_page?: number | null;
   measure: { name: string; unit: string; min: number | null; max: number | null } | null;
 }
+
+/** A drawing the model picked for a list item of an answer, by stepKey of the item. */
+export interface FigurePick { manual_id: string; manual: string; pdf_page: number; figure: number }
 
 export interface WorkPlan {
   tools: PlanItem[];
@@ -126,7 +131,7 @@ export interface WorkSnapshot {
   status: "active" | "done";
   plan: WorkPlan | null;
   progress: WorkProgress | null;
-  chat: { role: "user" | "assistant"; text: string; sources?: Source[]; ticket?: Ticket | null; cost?: number }[];
+  chat: { role: "user" | "assistant"; text: string; sources?: Source[]; ticket?: Ticket | null; cost?: number; figures?: Record<string, FigurePick> }[];
 }
 
 export type BookKind = "diagnosis" | "recheck" | "ticket" | "defect" | "repair" | "recommendation" | "note";
@@ -186,14 +191,15 @@ export interface ChatReply {
   cost_usd: number;
   photo_check?: PhotoCheck | null;
   contradictions?: Conflict[];
+  figures?: Record<string, FigurePick>;
 }
 
 /** Live progress from /assistant/chat/stream. */
 export type AgentEvent =
-  | { type: "thinking" | "checking" }
+  | { type: "thinking" | "checking" | "figures" }
   | { type: "fixing"; problems: string[] }
   | { type: "tool"; name: string; args: Record<string, unknown> }
-  | { type: "tool_result"; name: string; error?: string; found?: { manual: string; pdf_page: number }[];
+  | { type: "tool_result"; name: string; error?: string; found?: { manual_id?: string; manual: string; pdf_page: number }[];
       ticket_id?: string; status?: string; session_id?: string };
 
 export interface ChatMessage {
@@ -207,4 +213,5 @@ export interface ChatMessage {
   images?: string[];
   photoCheck?: PhotoCheck | null;
   contradictions?: Conflict[];
+  figures?: Record<string, FigurePick>;
 }

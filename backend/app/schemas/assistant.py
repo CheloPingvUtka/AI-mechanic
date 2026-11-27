@@ -72,5 +72,6 @@ class ChatResponse(BaseModel):
     ticket: dict | None = None
     photo_check: dict | None = None  # {shows, matches: yes|no|unclear, reason, engine}
     contradictions: list[dict] = []  # [{note, sides: [{manual_id, manual, pdf_page, quote}], official}]
+    figures: dict[str, dict] = {}  # {step key of a list item: {manual_id, manual, pdf_page, figure}} picked by the model
     steps: list[Step] = []
     cost_usd: float = 0.0

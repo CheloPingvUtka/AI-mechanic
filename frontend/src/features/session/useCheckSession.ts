@@ -60,7 +60,7 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
       conversation.current = reply.conversation_id;
       if (reply.ticket) setTicket(reply.ticket);
       setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", text: reply.answer, sources: reply.sources, cost: reply.cost_usd, events,
-        photoCheck: reply.photo_check, contradictions: reply.contradictions }]);
+        photoCheck: reply.photo_check, contradictions: reply.contradictions, figures: reply.figures }]);
       return reply.answer;
     } catch (e) {
       setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", error: true,
@@ -98,7 +98,7 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
       const w = await api.work(workId);
       conversation.current = w.work_id;
       setSessionId(w.session_id); setWorkId(w.work_id);
-      setMessages(w.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost })));
+      setMessages(w.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost, figures: m.figures })));
       setTicket([...w.chat].reverse().find(m => m.ticket)?.ticket ?? null);
       setResult(await api.diagnose(w.vehicle_id, w.session_id));
       return w.session_id;

@@ -10,7 +10,8 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 
-from app.agent.plan import FINISH_PLAN, UPDATE_PLAN, WorkPlan, update_plan
+from app.agent import figures
+from app.agent.plan import FINISH_PLAN, UPDATE_PLAN, PlanItem, WorkPlan, update_plan
 from app.agent.tools import TOOLS, AgentState, log_check_disputes, run_tool
 from app.domain.diagnostic_rules import assess
 from app.integrations.llm_client import LLMClient, LLMError
@@ -163,6 +164,18 @@ async def start(vehicle_id: str, session_id: str, lang: str = "ru") -> str:
     return conv_id
 
 
+async def illustrate(work: Work, items: list[PlanItem]) -> None:
+    """The model picks a drawing for each new step (or none); the plan updates when it is done."""
+    picks, usage = await figures.pick([(str(i.id), i.text + (f" — «{i.quote}»" if i.quote else ""), i.manual_id, i.pdf_page)
+                                       for i in items if i.manual_id and i.pdf_page])
+    work.cost_usd += usage.get("cost") or 0.0
+    for i in items:
+        if pick := picks.get(str(i.id)):
+            i.figure, i.figure_page = pick.figure, pick.pdf_page
+    log.info("plan %s figures: %s of %s steps", work.conv_id[:8], sum(1 for p in picks.values() if p), len(items))
+    work.emit_plan()
+
+
 async def _build(work: Work) -> None:
     state, plan = work.state, work.plan
     try:
@@ -187,6 +200,7 @@ async def _build(work: Work) -> None:
         )}, {"role": "user", "content": "Составь рабочий план."}]
         work.emit_plan()
         llm = LLMClient()
+        drawing: list[asyncio.Task] = []  # pictures are picked for steps while the plan keeps growing
         nudges = 2
         for _ in range(MAX_ROUNDS):
             work.emit({"type": "thinking"})
@@ -214,11 +228,14 @@ async def _build(work: Work) -> None:
                 except json.JSONDecodeError:
                     args = {}
                 if name == "update_plan":
+                    before = {i.id for i in plan.steps}
                     result = update_plan(plan, state.hits, **{k: args.get(k) for k in
                                                               ("section", "preliminary", "items")},
                                          replace=bool(args.get("replace")))
                     log.info("plan %s %s: +%s, rejected %s", work.conv_id[:8], args.get("section"),
                              result.get("accepted"), result.get("rejected"))
+                    if added := [i for i in plan.steps if i.id not in before]:
+                        drawing.append(asyncio.create_task(illustrate(work, added)))
                     work.emit_plan()
                 elif name == "finish_plan":
                     plan.note, plan.status = str(args.get("note", "")), "ready"
@@ -241,6 +258,9 @@ async def _build(work: Work) -> None:
                 ]})
             if plan.status == "ready":
                 break
+        for result in await asyncio.gather(*drawing, return_exceptions=True):
+            if isinstance(result, Exception):
+                log.warning("plan %s: picking figures failed: %s", work.conv_id[:8], result)
         for section, texts in FALLBACK.items():
             if not getattr(plan, section) and plan.steps:
                 update_plan(plan, state.hits, section, True, [{"text": t} for t in texts[work.lang]])
