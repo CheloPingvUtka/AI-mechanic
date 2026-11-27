@@ -1,4 +1,4 @@
-import React, { CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 /**
  * Российский гос. номер: легковой (тип 1) и спецтехника (тип 4).

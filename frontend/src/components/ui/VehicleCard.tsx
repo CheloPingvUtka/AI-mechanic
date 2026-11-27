@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import LicensePlate, { parseVehicleId } from "./LicensePlate";
 import { getVehiclePhoto } from "../../lib/vehiclePhotos";
 import "../../styles/VehicleCard.css";
