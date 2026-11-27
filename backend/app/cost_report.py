@@ -263,7 +263,7 @@ def report(anomaly, normal, failed, runs, plan_costs, voice, index_seconds: floa
         "## Ограничения замера",
         "",
         (f"- Мало прогонов ({n_anomaly} сценария с отклонением). Стоимость зависит от того, сколько поисков "
-         f"выберет модель: в этом замере сценарий стоил от {usd(min(run_totals))} до {usd(max(run_totals))}."),
+         f"выберет модель: в этом замере диалог (без фонового плана) стоил от {usd(min(run_totals))} до {usd(max(run_totals))}."),
         "- В цену не входят хостинг backend и реальный ML-сервис «НейроДВС».",
         "- Пересчитать: `python -m app.cost_report --out ../docs/cost.md` (backend, запущенные заглушки, "
         "построенный индекс)." + (f" Курс: {usd_rub} ₽ за $1 — допущение." if usd_rub else ""),
