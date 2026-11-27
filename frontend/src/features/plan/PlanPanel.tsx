@@ -13,6 +13,24 @@ export function pageRef(item: PlanItem): PageRef | null {
     : null;
 }
 
+/** The picture of a step card: the drawing the model chose for it, else the cited page itself. */
+export function stepPicture(item: PlanItem, width: number): string | null {
+  const ref = pageRef(item);
+  if (!ref) return null;
+  return item.figure != null ? figureImage({ ...ref, pdf_page: item.figure_page ?? ref.pdf_page }, item.figure, width)
+    : pageImage({ ...ref, hl: null }, width);
+}
+
+const preloaded = new Set<string>();
+/** Fetches pictures ahead (the server renders them once), so a step shows its picture at once. */
+export function preload(urls: (string | null)[]) {
+  for (const url of urls) {
+    if (!url || preloaded.has(url)) continue;
+    preloaded.add(url);
+    new Image().src = url;
+  }
+}
+
 export function PlanStatus({ plan }: { plan: WorkPlan }) {
   const { t } = useTranslation();
   const label = { building: t("plan.status_building", "собирается"), ready: t("plan.status_ready", "готов"),
@@ -90,11 +108,11 @@ export function StepCard({ item, n, state, setStep, onOpen, big = false, isNew =
       </div>}
       {ref && (big && pic
         ? <button className="step-figure" onClick={() => onOpen(pic.pdf_page === ref.pdf_page ? ref : { ...pic, hl: null })}>
-            <img src={figureImage(pic, item.figure!, 900)} alt=""/>
+            <img src={stepPicture(item, 900)!} alt=""/>
             <span><BookOpen size={14}/> {ref.manual}, {t("page", "стр.")} {pic.pdf_page}</span>
           </button>
         : <button className="step-source" onClick={() => onOpen(ref)}>
-            <img src={pic ? figureImage(pic, item.figure!, 360) : pageImage({ ...ref, hl: null }, 360)} alt="" loading="lazy"/>
+            <img src={stepPicture(item, 360)!} alt="" loading="lazy"/>
             <span><BookOpen size={13}/> {ref.manual}, {t("page", "стр.")} {pic?.pdf_page ?? ref.pdf_page}</span>
           </button>)}
     </div>

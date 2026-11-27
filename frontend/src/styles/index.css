@@ -79,8 +79,8 @@
 .lang-switch button{border:0;background:#fff;min-width:44px;height:36px;font-weight:750;font-size:13px;color:#52616c}
 .lang-switch button.active{background:#172b3a;color:#fff}
 /* Wizard: one big step at a time, glove-friendly (targets >= 56px). Action bar sticks to the bottom of the work column. */
-.page-content:has(>.wizard){padding-bottom:0}
-.wizard{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;max-width:980px;margin:0 auto;align-items:start;word-break:keep-all}
+.page-content:has(>.wizard:not([hidden])){padding-bottom:0}
+.wizard[hidden]{display:none}.wizard{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;max-width:980px;margin:0 auto;align-items:start;word-break:keep-all}
 .wizard.has-chat{max-width:1500px;grid-template-columns:minmax(0,1fr) 440px}
 .wizard-main{display:flex;flex-direction:column;gap:14px;min-width:0;min-height:calc(100dvh - 98px);container-type:inline-size}
 .wizard.has-chat>.assistant-panel{position:sticky;top:16px;height:calc(100dvh - 114px);min-height:420px}
@@ -212,7 +212,7 @@
 .wizard .md-step-explain{min-height:44px;font-size:14px}.wizard .md-step-thumb{height:110px}
 @media(max-width:760px){
   .lang-switch{border-color:#345064}.lang-switch button{background:#21394b;color:#c6d2da;min-width:40px;height:40px}.lang-switch button.active{background:#f28a35;color:#fff}
-  .page-content:has(>.wizard){padding:12px 12px 0}
+  .page-content:has(>.wizard:not([hidden])){padding:12px 12px 0}
   .wizard-main{min-height:calc(100dvh - 68px);gap:12px}
   .wizard-steps{gap:4px}.wizard-step{min-height:52px;gap:4px;padding:4px 6px;font-size:15px}
   .wizard-step:not(.current) .wizard-step-label,.wizard-step:not(.current) .wizard-step-icon{display:none}.wizard-step.current{flex:4}
@@ -351,3 +351,4 @@
   .work-stages{position:sticky;top:0;z-index:15;box-shadow:0 6px 12px -8px #14202a40}
   .chat-messages,.viewer{overscroll-behavior:contain}
 }
+.progress-stats{flex:none;font-size:11px;font-weight:700;color:#71808b;font-variant-numeric:tabular-nums;white-space:nowrap}.progress-stall{color:#b06f00!important;white-space:normal}.stall-icon{flex:none;color:#b06f00!important}

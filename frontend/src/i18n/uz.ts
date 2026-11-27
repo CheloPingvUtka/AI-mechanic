@@ -122,6 +122,12 @@ const uz = {
     tools: "Asboblar",
   },
   progress: {
+    figuresLook: "Rasmlarni ko‘ryapman",
+    figuresElsewhere: "Qo‘llanmaning boshqa joylaridan rasm qidiryapman",
+    figuresCount: "{{n}} ta, qadamlar uchun: {{s}}",
+    figuresPicked: "mos keldi: {{n}}",
+    stall: "Serverdan {{n}} soniya javob yo‘q — aloqani tekshiring",
+    tokensHint: "↑ modelga yuborildi (keshdagisiz), ↓ undan olindi (shundan fikrlash: {{r}}) — tokenlarda",
     figures: "Qadamlarga mos rasmlarni tanlayapman",
     checking: "Raqamlarni qo‘llanmaning topilgan sahifalari bilan solishtiryapman",
     contradiction: "Qo‘llanmalarda farq topdim",

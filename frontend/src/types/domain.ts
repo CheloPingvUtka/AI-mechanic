@@ -196,12 +196,16 @@ export interface ChatReply {
 }
 
 /** Live progress from /assistant/chat/stream. */
-export type AgentEvent =
-  | { type: "thinking" | "checking" | "figures" }
+export type AgentEvent = (
+  | { type: "thinking" | "checking" | "figures" | "ping" }
   | { type: "fixing"; problems: string[] }
   | { type: "tool"; name: string; args: Record<string, unknown> }
   | { type: "tool_result"; name: string; error?: string; found?: { manual_id?: string; manual: string; pdf_page: number }[];
-      ticket_id?: string; status?: string; session_id?: string };
+      ticket_id?: string; status?: string; session_id?: string }
+  | { type: "tokens"; up: number; down: number; reasoning: number }  // whole request so far; down includes reasoning
+  | { type: "figures_look"; id: string; manual_id: string; manual: string; pages: number[]; count: number; steps: number; second: boolean }
+  | { type: "figures_seen"; id: string; picked: number }
+) & { at?: number };  // when it arrived (ms), set by pushEvent
 
 export interface ChatMessage {
   id: string;

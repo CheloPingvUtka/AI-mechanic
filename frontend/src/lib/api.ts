@@ -117,12 +117,18 @@ export function shrinkPhoto(file: File, max = 1280): Promise<string> {
 }
 
 /** Background work plan: replays everything so far, then live updates; closes when the builder is done. */
+/** Adds a live event, stamped with when it came; only the latest token counter and ping are kept. */
+export function pushEvent(list: AgentEvent[], e: AgentEvent): AgentEvent[] {
+  const stamped = { ...e, at: Date.now() };
+  return e.type === "tokens" || e.type === "ping" ? [...list.filter(x => x.type !== e.type), stamped] : [...list, stamped];
+}
+
 export function watchWork(workId: string, onPlan: (p: WorkPlan) => void, onEvent: (e: AgentEvent) => void) {
   const source = new EventSource(apiUrl(`/work/${workId}/stream`));
   source.onmessage = msg => {
     const event = JSON.parse(msg.data);
     if (event.type === "plan") onPlan(event.plan as WorkPlan);
-    else if (event.type === "done") source.close();
+    else if (event.type === "done") { if (event.tokens) onEvent(event.tokens as AgentEvent); source.close(); }
     else onEvent(event as AgentEvent);
   };
   return () => source.close();

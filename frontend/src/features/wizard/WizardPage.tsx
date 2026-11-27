@@ -12,7 +12,7 @@ import { useCheckSession } from "../session/useCheckSession";
 import ResultCard, { verdictLine } from "../session/ResultCard";
 import TicketCard from "../session/TicketCard";
 import { inNorm, usePlan, type PlanState } from "../plan/usePlan";
-import { CheckList, prepSections, StepCard } from "../plan/PlanPanel";
+import { CheckList, preload, prepSections, StepCard, stepPicture } from "../plan/PlanPanel";
 import ChatPanel, { speakable } from "../chat/ChatPanel";
 import { parseCommand, useVoice } from "../voice/useVoice";
 import { MicButton, VoiceLine } from "../voice/VoiceBar";
@@ -33,7 +33,7 @@ function useWide() {
 }
 
 /** Mechanic's main screen: one big step at a time, usable by voice and with gloves. */
-export default function WizardPage() {
+export default function WizardPage({ active = true }: { active?: boolean }) {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
   const { data: fleet } = useLoad(api.fleet);
@@ -188,7 +188,7 @@ export default function WizardPage() {
     : null;
   const back = screen === "result" ? () => go("vehicle") : screen === "work" ? workBack : screen === "ticket" ? () => go(s.workId ? "work" : "result") : null;
 
-  return <div className={`wizard ${chatCol ? "has-chat" : ""}`}>
+  return <div className={`wizard ${chatCol ? "has-chat" : ""}`} hidden={!active}>
     <div className="wizard-main">
       <nav className="wizard-steps" aria-label={t("wizard.progress", "Этапы")}>
         {SCREENS.map((sc, i) => <button key={sc} className={`wizard-step ${sc === screen ? "current" : i < idx ? "passed" : ""}`}
@@ -280,6 +280,8 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
 }) {
   const { t } = useTranslation();
   const plan = p.plan;
+  // the pictures of all steps load while the mechanic is still preparing (the wizard shows big drawings)
+  useEffect(() => { preload((plan?.steps ?? []).map(x => stepPicture(x, x.figure != null ? 900 : 360))); }, [plan]);
   if (!plan) return <div className="work-status"><Loader2 size={28} className="spin"/><div><b>{t("plan.starting", "Готовлю рабочий план…")}</b></div></div>;
   const { steps } = plan;
   const step = steps[at];

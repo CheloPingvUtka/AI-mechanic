@@ -122,6 +122,12 @@ const ko = {
     tools: "공구",
   },
   progress: {
+    figuresLook: "그림을 보는 중",
+    figuresElsewhere: "설명서의 다른 곳에서 그림을 찾는 중",
+    figuresCount: "{{n}}개, 단계 {{s}}개용",
+    figuresPicked: "맞는 그림: {{n}}",
+    stall: "서버 응답이 {{n}}초째 없어요 — 연결을 확인하세요",
+    tokensHint: "↑ 모델에 보냄(캐시 제외), ↓ 모델에게서 받음 (그중 추론: {{r}}) — 토큰 단위",
     figures: "단계에 맞는 그림을 고르는 중",
     checking: "숫자를 찾은 설명서 쪽과 맞춰 보고 있어요",
     contradiction: "설명서끼리 다른 점을 찾았어요",

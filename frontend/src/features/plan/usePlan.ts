@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, watchWork } from "../../lib/api";
+import { api, pushEvent, watchWork } from "../../lib/api";
 import type { AgentEvent, PlanItem, Stage, WorkPlan, WorkProgress } from "../../types/domain";
 
 const NEW_FOR_MS = 20000;
@@ -46,7 +46,7 @@ export function usePlan(workId: string | null) {
       }
       initial = false;
       setPlan(p);
-    }, e => setEvents(ev => [...ev, e]));
+    }, e => setEvents(ev => pushEvent(ev, e)));
     return () => { live = false; stop(); };
   }, [workId, round]);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 5000); return () => clearInterval(id); }, []);

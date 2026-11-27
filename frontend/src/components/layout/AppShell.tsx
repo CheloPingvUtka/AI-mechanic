@@ -4,10 +4,10 @@ import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { setLanguage } from "../../i18n";
 
-export default function AppShell({ children }: { children: ReactNode }) {
+export default function AppShell({ children, workTo = "/" }: { children: ReactNode; workTo?: string }) {
   const { t, i18n } = useTranslation();
   const links = [
-    { to: "/", label: t("nav.work", "Работа"), icon: Wrench },
+    { to: workTo, label: t("nav.work", "Работа"), icon: Wrench },  // back to the open repair, not to its start
     { to: "/detail", label: t("nav.detail", "Подробно"), icon: PanelsTopLeft, wide: true },  // desktop workspace: not in the phone bar
     { to: "/tickets", label: t("nav.tickets", "Заявки"), icon: ClipboardList },
     { to: "/fleet", label: t("nav.fleet", "Автопарк"), icon: Gauge },

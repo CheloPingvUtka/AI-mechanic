@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, chatStream, shrinkPhoto, type ChatBody } from "../../lib/api";
+import { api, chatStream, pushEvent, shrinkPhoto, type ChatBody } from "../../lib/api";
 import type { AgentEvent, Assessment, ChatMessage, FleetVehicle, Ticket } from "../../types/domain";
 
 export type Lang = "ru" | "uz" | "ko";
@@ -51,12 +51,12 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
     setPhotos([]);
     setMessages(m => [...m, { id: crypto.randomUUID(), role: "user", text, images }]);
     setBusy(true); setLive([]);
-    const events: AgentEvent[] = [];
+    let events: AgentEvent[] = [];
     try {
       const reply = await chatStream({
         vehicle_id: vehicle.vehicle_id, session_id: opts.session ?? sessionId, message: text, lang,
         conversation_id: conversation.current, confirm_warning: !!opts.confirmWarning, images, context: context.current,
-      }, e => { events.push(e); setLive([...events]); });
+      }, e => { events = pushEvent(events, e); setLive(events); });
       conversation.current = reply.conversation_id;
       if (reply.ticket) setTicket(reply.ticket);
       setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", text: reply.answer, sources: reply.sources, cost: reply.cost_usd, events,
@@ -81,6 +81,13 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
         const { work_id } = await api.startWork(vehicle.vehicle_id, session, lang);
         conversation.current = work_id;
         setWorkId(work_id);
+        // the same check opened again: its work and chat are reused, nothing is asked twice
+        const saved = await api.work(work_id).catch(() => null);
+        if (saved?.chat.length) {
+          setMessages(saved.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost, figures: m.figures })));
+          setTicket([...saved.chat].reverse().find(m => m.ticket)?.ticket ?? null);
+          return assessment;
+        }
       }
       void send(t("chat.explain", "Объясни результат проверки {{s}}", { s: session }), { session });
       return assessment;
