@@ -90,3 +90,42 @@ def ticket_block_reason(d: DiagnoseResponse, warning_confirmed: bool, fuel: str 
             "прочитает предупреждение и нажмёт кнопку «Подтверждаю, создать заявку»."
         )
     return None
+
+
+FLEET_STATES = ("quarantine", "attention", "normal")
+
+
+def fleet_state(status: str, anomaly_type: str | None, anomaly_score: float | None,
+                confidence: float | None, fuel: str | None) -> dict:
+    """Vehicle state for the chief mechanic, from its latest check, by the same rules as tickets."""
+    if status == "normal":
+        return {"state": "normal", "urgency": None, "reason": "Последняя проверка: норма"}
+    if status == "check_failed":
+        return {"state": "attention", "urgency": None, "reason": "Запись отбракована: повторить проверку"}
+    if confidence is None or confidence < CONFIDENCE_MIN:
+        return {"state": "attention", "urgency": None,
+                "reason": f"Уверенность ниже {CONFIDENCE_MIN:.2f}: повторить проверку"}
+    if fault_mismatch(anomaly_type, fuel):
+        return {"state": "attention", "urgency": None,
+                "reason": "Тип неисправности не подходит к двигателю: повторить проверку"}
+    level = urgency(anomaly_type, anomaly_score)
+    return {"state": "quarantine" if level == "high" else "attention", "urgency": level,
+            "reason": URGENCY_MEANING[level]}
+
+
+def assess(d: DiagnoseResponse, fuel: str | None, warning_confirmed: bool = False) -> dict:
+    """What the product concludes from a check: priority, and whether/why a ticket is blocked."""
+    out = {
+        "confidence_threshold": CONFIDENCE_MIN,
+        "ticket_blocked_reason": ticket_block_reason(d, warning_confirmed, fuel),
+        "needs_warning_confirmation": (
+            not warning_confirmed
+            and ticket_block_reason(d, False, fuel) is not None
+            and ticket_block_reason(d, True, fuel) is None
+        ),
+        "urgency": None,
+    }
+    if d.status == "anomaly" and d.anomaly_type and d.anomaly_score is not None:
+        level = urgency(d.anomaly_type, d.anomaly_score)
+        out["urgency"] = {"level": level, "meaning": URGENCY_MEANING[level]}
+    return out

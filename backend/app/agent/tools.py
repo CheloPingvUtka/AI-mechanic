@@ -9,9 +9,9 @@ from pydantic import ValidationError
 
 from app.agent.checks import numbers, quote_in
 from app.domain.diagnostic_rules import (
-    CONFIDENCE_MIN,
     OPERATION_BAN,
     URGENCY_MEANING,
+    assess,
     ticket_block_reason,
     urgency,
 )
@@ -126,13 +126,7 @@ async def get_diagnosis(state: AgentState, session_id: str | None = None) -> dic
         return {"error": f"Проверки {sid} у машины {state.vehicle.vehicle_id} нет."}
     d = await MockMLClient().diagnose(DiagnoseRequest(vehicle_id=state.vehicle.vehicle_id, session_id=sid))
     state.diagnosis, state.session_id = d, sid
-    result = d.model_dump()
-    result["confidence_threshold"] = CONFIDENCE_MIN
-    result["ticket_blocked_reason"] = ticket_block_reason(d, state.warning_confirmed, state.vehicle.fuel)
-    if d.status == "anomaly" and d.anomaly_type and d.anomaly_score is not None:
-        level = urgency(d.anomaly_type, d.anomaly_score)
-        result["urgency"] = {"level": level, "meaning": URGENCY_MEANING[level]}
-    return result
+    return {**d.model_dump(), **assess(d, state.vehicle.fuel, state.warning_confirmed)}
 
 
 async def search_manual(state: AgentState, query: str) -> dict:

@@ -1,74 +1,161 @@
-import { useState } from "react";
-import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, ClipboardPlus, Mic, RefreshCw, Send, ShieldAlert, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, ClipboardCheck, ClipboardPlus, Loader2, RefreshCw, Send, ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { mockRepairPlan, vehicles } from "../../data/mock";
-import { getDiagnosis } from "../../lib/api/diagnostics";
-import { askAssistant } from "../../lib/api/assistant";
-import type { ChatMessage, DiagnosisResult } from "../../types/domain";
+import { api, formatDate, URGENCY_LABEL, useLoad, vehicleName } from "../../lib/api";
+import type { Assessment, ChatMessage, Source, Ticket } from "../../types/domain";
 import StatusBadge from "../../components/ui/StatusBadge";
+import Markdown from "../../components/ui/Markdown";
+import ScoreChart, { trend } from "../../components/ui/ScoreChart";
+
+const QUICK = ["Чем опасна эта неисправность?", "Что проверить в первую очередь?", "Можно ли своим ходом перегнать машину на базу?"];
 
 export default function MechanicPage() {
   const { t } = useTranslation();
-  const [vehicleId, setVehicleId] = useState(vehicles[0].vehicle_id);
-  const [result, setResult] = useState<DiagnosisResult | null>(null);
+  const [params, setParams] = useSearchParams();
+  const { data: fleet, error: fleetError } = useLoad(api.fleet);
+  const vehicleId = params.get("vehicle") ?? fleet?.[0]?.vehicle_id ?? "";
+  const vehicle = fleet?.find(v => v.vehicle_id === vehicleId);
+  const [sessionId, setSessionId] = useState("");
+  const [result, setResult] = useState<Assessment | null>(null);
+  const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [error, setError] = useState("");
-  const vehicle = vehicles.find(v => v.vehicle_id === vehicleId)!;
+  const conversation = useRef<string | null>(null);
+  const chatBox = useRef<HTMLDivElement>(null);
+
+  // New vehicle: latest check selected, everything else starts over.
+  useEffect(() => {
+    setSessionId(vehicle?.sessions[vehicle.sessions.length - 1].session_id ?? "");
+    setResult(null); setTicket(null); setMessages([]); setError("");
+    conversation.current = null;
+  }, [vehicle]);
+  // Scroll only the chat box (desktop); never the page, so the verdict stays in view on a phone.
+  useEffect(() => { chatBox.current?.scrollTo({ top: chatBox.current.scrollHeight, behavior: "smooth" }); }, [messages, busy]);
+
+  async function send(text: string, confirmWarning = false) {
+    if (!vehicle || busy || !text.trim()) return;
+    setQuestion("");
+    setMessages(m => [...m, { id: crypto.randomUUID(), role: "user", text }]);
+    setBusy(true);
+    try {
+      const reply = await api.chat({
+        vehicle_id: vehicle.vehicle_id, session_id: sessionId, message: text,
+        conversation_id: conversation.current, confirm_warning: confirmWarning,
+      });
+      conversation.current = reply.conversation_id;
+      if (reply.ticket) setTicket(reply.ticket);
+      setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", text: reply.answer, sources: reply.sources, cost: reply.cost_usd }]);
+    } catch (e) {
+      setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", error: true, text: `Агент не ответил: ${(e as Error).message}` }]);
+    } finally { setBusy(false); }
+  }
 
   async function runDiagnosis() {
-    setLoading(true); setError("");
-    try { setResult(await getDiagnosis(vehicleId, `S-${Date.now().toString().slice(-5)}`)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Не удалось получить результат"); }
+    if (!vehicle) return;
+    setLoading(true); setError(""); setResult(null); setTicket(null);
+    try {
+      setResult(await api.diagnose(vehicle.vehicle_id, sessionId));
+      void send(`Объясни результат проверки ${sessionId}`);
+    } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }
-  async function sendQuestion() {
-    if (!question.trim()) return;
-    const q = question.trim(); setQuestion("");
-    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "user", text: q }]);
-    try { const answer = await askAssistant(q, vehicleId); setMessages(prev => [...prev, answer]); }
-    catch { setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "assistant", text: "Не удалось получить ответ. Проверьте подключение агента." }]); }
-  }
+
+  if (fleetError) return <div className="notice warning-notice"><AlertTriangle/><div><b>Нет связи с backend</b><p>{fleetError}</p></div></div>;
+  if (!fleet || !vehicle) return <p className="muted"><Loader2 size={14} className="spin"/> Загружаем автопарк…</p>;
 
   return <div className="page-grid mechanic-grid">
     <section className="main-column">
-      <div className="page-heading"><div><p className="eyebrow">РАБОЧАЯ ЗОНА</p><h1>{t("workspace")}</h1><p className="muted">Проверка двигателя и дальнейшие действия по ремонту</p></div><span className="session-label">Сессия не запущена</span></div>
+      <div className="page-heading"><div><p className="eyebrow">РАБОЧАЯ ЗОНА</p><h1>{t("workspace")}</h1><p className="muted">Проверка двигателя и дальнейшие действия по ремонту</p></div></div>
+
       <section className="panel vehicle-panel">
-        <div className="panel-heading"><div><p className="eyebrow">{t("selectedVehicle")}</p><h2>{vehicle.plate}</h2></div><span className="badge info">ТС выбрано</span></div>
-        <select className="vehicle-select" value={vehicleId} onChange={e => { setVehicleId(e.target.value); setResult(null); }} aria-label="Выбрать транспортное средство">
-          {vehicles.map(v => <option key={v.vehicle_id} value={v.vehicle_id}>{v.plate} · {v.brand} {v.model} · {v.engine}</option>)}
+        <div className="panel-heading"><div><p className="eyebrow">{t("selectedVehicle")}</p><h2>{vehicle.vehicle_id} · {vehicle.garage_no}</h2></div></div>
+        <select className="vehicle-select" value={vehicle.vehicle_id} onChange={e => setParams({ vehicle: e.target.value })} aria-label="Транспортное средство">
+          {fleet.map(v => <option key={v.vehicle_id} value={v.vehicle_id}>{v.vehicle_id} · {v.garage_no} · {vehicleName(v)} · {v.engine_model}</option>)}
         </select>
-        <div className="vehicle-meta"><span>{vehicle.brand} {vehicle.model}</span><span>Двигатель: <b>{vehicle.engine}</b></span><span>Пробег: {vehicle.mileage_km.toLocaleString("ru-RU")} км</span><span>{vehicle.year} г.</span></div>
-        <button className="button button-primary button-large" onClick={runDiagnosis} disabled={loading}><RefreshCw size={17} className={loading ? "spin" : ""}/>{loading ? "Получаем результат…" : t("getResult")}<ArrowRight size={17}/></button>
+        <div className="vehicle-meta"><span>{vehicleName(vehicle)}</span><span>Двигатель: <b>{vehicle.engine_model}</b></span><span>Топливо: {vehicle.fuel}</span><span>{vehicle.vehicle_type}</span></div>
+        <select className="vehicle-select" value={sessionId} onChange={e => { setSessionId(e.target.value); setResult(null); setTicket(null); }} aria-label="Проверка">
+          {[...vehicle.sessions].reverse().map(s => <option key={s.session_id} value={s.session_id}>{s.session_id} · {formatDate(s.checked_at)} · {t(s.status)}</option>)}
+        </select>
+        <button className="button button-primary button-large" onClick={() => void runDiagnosis()} disabled={loading}>
+          <RefreshCw size={17} className={loading ? "spin" : ""}/>{loading ? "Получаем результат…" : t("getResult")}<ArrowRight size={17}/>
+        </button>
         {error && <p className="error-text">{error}</p>}
       </section>
 
-      {result && <section className="panel result-panel">
-        <div className="panel-heading"><div><p className="eyebrow">РЕЗУЛЬТАТ ПРОВЕРКИ · {result.session_id}</p><h2>Заключение по двигателю</h2></div><StatusBadge status={result.status}/></div>
-        {result.status === "check_failed" ? <div className="notice warning-notice"><AlertTriangle/><div><b>Проверка не состоялась</b><p>Качество записи недостаточное. Система не делает выводов о состоянии двигателя. Повторите запись на стенде.</p></div></div>
-        : result.status === "normal" ? <div className="notice success-notice"><CheckCircle2/><div><b>Значимых отклонений не обнаружено</b><p>По результату этой проверки двигатель не показал признаков отклонения. Продолжайте эксплуатацию согласно регламенту.</p></div></div>
-        : <>
-          <div className="anomaly-title"><div><span className="eyebrow">ВЕРОЯТНОЕ НАПРАВЛЕНИЕ ПРОВЕРКИ</span><h2>{result.anomaly_title}</h2><p>{result.description}</p></div><div className="confidence"><strong>{Math.round((result.confidence ?? 0) * 100)}%</strong><small>уверенность</small></div></div>
-          <div className="notice danger-notice"><ShieldAlert/><div><b>Требуется внимание</b><p>{mockRepairPlan.risk}</p></div></div>
-          {result.confidence !== null && result.confidence < 0.7 && <div className="notice warning-notice"><AlertTriangle/><div><b>Низкая уверенность модели</b><p>Результат является предварительной гипотезой. Необходимо подтвердить возможную проблему проверками.</p></div></div>}
-          <div className="repair-plan"><h3>План дальнейших действий</h3><ol>{mockRepairPlan.operations.map(item => <li key={item}>{item}</li>)}</ol><p className="demo-source"><BookOpen size={14}/> {mockRepairPlan.references[0].manual} · PDF, стр. {mockRepairPlan.references[0].pdf_page}</p><p className="disclaimer">{mockRepairPlan.confidence_note}</p></div>
-          <a className="button button-primary" href="/tickets"><ClipboardPlus size={17}/>{t("createTicket")}<ArrowRight size={16}/></a>
-        </>}
-      </section>}
+      {result && <ResultCard result={result} busy={busy} ticket={ticket} send={send}/>}
+      {ticket && <TicketCard ticket={ticket}/>}
+
+      <section className="panel">
+        <div className="panel-heading"><div><p className="eyebrow">ИСТОРИЯ ПРОВЕРОК</p><h2>Динамика anomaly_score</h2></div></div>
+        <ScoreChart sessions={vehicle.sessions}/>
+        <p className="muted">{trend(vehicle.sessions)} Пунктир — 0,5: ниже этого уровня модель не сообщает об отклонении.</p>
+      </section>
     </section>
 
     <aside className="assistant-panel panel">
-      <div className="assistant-heading"><div className="assistant-avatar"><WrenchIcon/></div><div><h2>{t("assistant")}</h2><small>Ответы с опорой на руководство</small></div><span className="online-dot"/></div>
-      <div className="chat-messages">
-        <div className="chat-bubble assistant-bubble">Здравствуйте! Выберите автомобиль и получите результат проверки. Я помогу разобраться с дальнейшими действиями.</div>
-        {messages.map(m => <div key={m.id} className={`chat-bubble ${m.role === "user" ? "user-bubble" : "assistant-bubble"}`}>{m.text}</div>)}
+      <div className="assistant-heading"><div className="assistant-avatar"><span className="wrench-glyph">✳</span></div><div><h2>{t("assistant")}</h2><small>Отвечает только по руководству на {vehicle.engine_model}</small></div><span className="online-dot"/></div>
+      <div className="chat-messages" ref={chatBox}>
+        <div className="chat-bubble assistant-bubble">Получите результат проверки — я объясню его и найду порядок проверки в руководстве. Нормативы даю только со ссылкой на страницу.</div>
+        {messages.map(m => <div key={m.id} className={`chat-bubble ${m.role === "user" ? "user-bubble" : "assistant-bubble"} ${m.error ? "error-bubble" : ""}`}>
+          {m.role === "user" ? m.text : <Markdown text={m.text}/>}
+          {!!m.sources?.length && <Sources sources={m.sources}/>}
+          {m.cost !== undefined && <small className="cost-note">стоимость ответа ${m.cost.toFixed(4)}</small>}
+        </div>)}
+        {busy && <div className="chat-bubble assistant-bubble typing"><Loader2 size={14} className="spin"/> Ищу в руководстве…</div>}
       </div>
-      <div className="quick-questions"><span className="eyebrow">БЫСТРЫЕ ВОПРОСЫ</span>{["Чем опасна эта неисправность?","Что проверить в первую очередь?","Можно ли перегнать автомобиль?"].map(q => <button key={q} onClick={() => setQuestion(q)}>{q}</button>)}</div>
-      <form className="chat-composer" onSubmit={e => { e.preventDefault(); void sendQuestion(); }}><input value={question} onChange={e => setQuestion(e.target.value)} placeholder={t("ask")}/><button type="button" className="icon-button" title="Голосовой ввод пока не подключён"><Mic size={19}/></button><button className="send-button" type="submit" aria-label="Отправить"><Send size={17}/></button></form>
-      <p className="chat-footnote"><Volume2 size={13}/> Голосовой ввод и озвучивание ответа — точка расширения</p>
+      <div className="quick-questions"><span className="eyebrow">БЫСТРЫЕ ВОПРОСЫ</span>{QUICK.map(q => <button key={q} disabled={busy} onClick={() => void send(q)}>{q}</button>)}</div>
+      <form className="chat-composer" onSubmit={e => { e.preventDefault(); void send(question); }}>
+        <input value={question} onChange={e => setQuestion(e.target.value)} placeholder={t("ask")}/>
+        <button className="send-button" type="submit" disabled={busy} aria-label="Отправить"><Send size={17}/></button>
+      </form>
     </aside>
   </div>;
 }
 
-function WrenchIcon() { return <span className="wrench-glyph">✳</span>; }
+function ResultCard({ result, busy, ticket, send }: { result: Assessment; busy: boolean; ticket: Ticket | null; send: (text: string, confirm?: boolean) => Promise<void> }) {
+  const failed = result.status === "check_failed" || result.signal_quality === "bad";
+  const lowConfidence = result.confidence !== null && result.confidence < result.confidence_threshold;
+  const otherBlock = result.ticket_blocked_reason && !result.needs_warning_confirmation && !lowConfidence;
+  return <section className="panel result-panel">
+    <div className="panel-heading"><div><p className="eyebrow">РЕЗУЛЬТАТ ПРОВЕРКИ · {result.session_id}</p><h2>Заключение по двигателю</h2></div><StatusBadge status={result.status}/></div>
+    {failed ? <div className="notice warning-notice"><AlertTriangle/><div><b>Проверка не состоялась — повторите запись</b><p>{result.description}. Выводов о состоянии двигателя нет. Проверьте установку стенда и посторонний шум, запишите снова.</p></div></div>
+    : result.status === "normal" ? <div className="notice success-notice"><CheckCircle2/><div><b>Значимых отклонений не обнаружено</b><p>Эксплуатация продолжается по регламенту.</p></div></div>
+    : <>
+      <div className="anomaly-title">
+        <div><span className="eyebrow">ПРЕДПОЛАГАЕМАЯ НЕИСПРАВНОСТЬ · {result.anomaly_type}</span><h2>{result.anomaly_title}</h2><p>{result.description}</p></div>
+        <div className="confidence"><strong>{Math.round((result.confidence ?? 0) * 100)}%</strong><small>уверенность</small></div>
+      </div>
+      {result.urgency && !lowConfidence && !otherBlock && <div className={`notice ${result.urgency.level === "high" ? "danger-notice" : "warning-notice"}`}><ShieldAlert/><div><b>Приоритет: {URGENCY_LABEL[result.urgency.level]}</b><p>{result.urgency.meaning}. Это рекомендация, решение принимает механик.</p></div></div>}
+      {result.signal_quality === "warning" && <div className="notice warning-notice"><AlertTriangle/><div><b>Запись с помехами</b><p>Уверенность модели снижена. Заявку можно создать только после вашего подтверждения.</p></div></div>}
+      {lowConfidence && <div className="notice warning-notice"><AlertTriangle/><div><b>Уверенность ниже порога {result.confidence_threshold.toFixed(2)}</b><p>Результат ненадёжен: нужна повторная проверка. Заявка не создаётся.</p></div></div>}
+      {otherBlock && <div className="notice warning-notice"><AlertTriangle/><div><b>Заявка не создаётся</b><p>{result.ticket_blocked_reason}</p></div></div>}
+      {!ticket && !result.ticket_blocked_reason && <button className="button button-primary" disabled={busy} onClick={() => void send("Создай заявку на дефектовку")}><ClipboardPlus size={17}/>Создать заявку на дефектовку</button>}
+      {!ticket && result.needs_warning_confirmation && <button className="button button-primary" disabled={busy} onClick={() => void send("Создай заявку на дефектовку", true)}><ClipboardCheck size={17}/>Подтверждаю, создать заявку</button>}
+    </>}
+  </section>;
+}
+
+function TicketCard({ ticket }: { ticket: Ticket }) {
+  return <section className="panel ticket-card">
+    <div className="notice success-notice"><CheckCircle2/><div><b>Заявка {ticket.ticket_id} создана</b><p>Приоритет: {URGENCY_LABEL[ticket.urgency]} · {ticket.anomaly_type} · проверка {ticket.session_id}</p></div></div>
+    {ticket.operation_ban && <div className="notice danger-notice"><ShieldAlert/><div><b>Руководство запрещает эксплуатацию</b><p>«{ticket.operation_ban.quote}» — {ticket.operation_ban.manual}, стр. {ticket.operation_ban.pdf_page}</p></div></div>}
+    <p>{ticket.conclusion}</p>
+    <ol>{ticket.operations.map(o => <li key={o}>{o}</li>)}</ol>
+    {!!ticket.spare_parts.length && <p className="muted">Запчасти: {ticket.spare_parts.join(", ")}</p>}
+    {ticket.references.map(r => <p key={r.manual + r.pdf_page} className="demo-source"><BookOpen size={14}/> {r.manual} · стр. PDF {r.pdf_page}</p>)}
+  </section>;
+}
+
+function Sources({ sources }: { sources: Source[] }) {
+  return <details className="sources">
+    <summary><BookOpen size={13}/> Источники ({sources.length})</summary>
+    {sources.map(s => <div key={s.manual + s.pdf_page} className="source-item">
+      <b>{s.manual}, стр. PDF {s.pdf_page}</b>{s.ocr && <span className="badge warning">скан: сверить числа</span>}
+      <blockquote>{s.excerpt}</blockquote>
+    </div>)}
+  </details>;
+}

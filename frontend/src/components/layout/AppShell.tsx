@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Activity, ClipboardList, Gauge, History, Languages, Wrench } from "lucide-react";
+import { Activity, ClipboardList, Gauge, Languages, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import i18n from "../../i18n";

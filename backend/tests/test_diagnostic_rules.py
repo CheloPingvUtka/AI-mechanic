@@ -56,3 +56,14 @@ def test_urgency_base_and_bounded_score_adjustment():
     assert urgency("F02", 0.99) == "high"  # already at the top
     assert urgency("F05", 0.50) == "low"  # already at the bottom
     assert urgency("F05", 0.50, operation_banned=True) == "high"
+
+
+def test_fleet_state():
+    from app.domain.diagnostic_rules import fleet_state
+
+    assert fleet_state("normal", None, 0.1, 0.9, "дизель")["state"] == "normal"
+    assert fleet_state("check_failed", None, None, None, "дизель")["state"] == "attention"
+    assert fleet_state("anomaly", "F02", 0.8, 0.45, "дизель")["urgency"] is None  # low confidence: recheck
+    assert fleet_state("anomaly", "F12", 0.9, 0.9, "дизель")["state"] == "attention"  # impossible on diesel
+    assert fleet_state("anomaly", "F02", 0.8, 0.9, "дизель")["state"] == "quarantine"
+    assert fleet_state("anomaly", "F05", 0.7, 0.9, "дизель")["state"] == "attention"

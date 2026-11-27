@@ -29,7 +29,7 @@ Copy-Item .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-Перед запуском укажите в `backend/.env` адреса приватных Mock API и путь к внешнему `vehicles.json`.
+Перед запуском укажите в `backend/.env` адреса приватных Mock API, путь к внешнему `vehicles.json`, папку с PDF (`KNOWLEDGE_BASE_PATH`) и ключ LLM (`LLM_API_KEY`). Один раз постройте индекс руководств: `python -m app.rag.indexer` (подробности в [backend/README.md](backend/README.md)).
 
 ### 2. Frontend
 

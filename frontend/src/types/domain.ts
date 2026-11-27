@@ -1,17 +1,8 @@
 export type DiagnosisStatus = "normal" | "anomaly" | "check_failed";
 export type Urgency = "low" | "medium" | "high";
+export type FleetState = "normal" | "attention" | "quarantine";
 
-export interface Vehicle {
-  vehicle_id: string;
-  plate: string;
-  brand: string;
-  model: string;
-  engine: string;
-  mileage_km: number;
-  year: number;
-}
-
-export interface DiagnosisResult {
+export interface Diagnosis {
   vehicle_id: string;
   session_id: string;
   status: DiagnosisStatus;
@@ -24,21 +15,41 @@ export interface DiagnosisResult {
   model_version: string;
 }
 
-export interface SourceReference {
+/** POST /diagnostics: the check plus what the backend rules conclude from it. */
+export interface Assessment extends Diagnosis {
+  confidence_threshold: number;
+  ticket_blocked_reason: string | null;
+  needs_warning_confirmation: boolean;
+  urgency: { level: Urgency; meaning: string } | null;
+}
+
+export interface Session extends Diagnosis {
+  checked_at: string;
+}
+
+export interface FleetVehicle {
+  vehicle_id: string;
+  garage_no: string;
+  make: string;
+  model: string | null;
+  vehicle_type: string;
+  engine_model: string;
+  fuel: string;
+  sessions: Session[];
+  state: FleetState;
+  urgency: Urgency | null;
+  reason: string;
+}
+
+export interface Source {
   manual: string;
   pdf_page: number;
+  excerpt: string;
+  ocr: boolean;
 }
 
-export interface RepairPlan {
-  conclusion: string;
-  risk: string;
-  operations: string[];
-  spare_parts: string[];
-  references: SourceReference[];
-  confidence_note?: string;
-}
-
-export interface TicketPayload {
+export interface Ticket {
+  ticket_id: string;
   vehicle_id: string;
   session_id: string;
   anomaly_type: string;
@@ -46,17 +57,23 @@ export interface TicketPayload {
   urgency: Urgency;
   operations: string[];
   spare_parts: string[];
-  references: SourceReference[];
+  references: { manual: string; pdf_page: number }[];
+  operation_ban: { manual: string; pdf_page: number; quote: string } | null;
 }
 
-export interface TicketResponse {
-  ticket_id: string;
-  status: "created";
+export interface ChatReply {
+  conversation_id: string;
+  answer: string;
+  sources: Source[];
+  ticket: Ticket | null;
+  cost_usd: number;
 }
 
 export interface ChatMessage {
   id: string;
   role: "assistant" | "user";
   text: string;
-  references?: SourceReference[];
+  sources?: Source[];
+  cost?: number;
+  error?: boolean;
 }
