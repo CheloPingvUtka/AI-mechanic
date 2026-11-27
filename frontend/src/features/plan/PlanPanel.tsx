@@ -127,7 +127,7 @@ export default function PlanPanel({ p, onOpen, onReport }: {
       <div><p className="eyebrow">{t("plan.eyebrow", "РАБОЧИЙ ПЛАН")}</p><h2>{t("plan.title", "Что подготовить и что делать")}</h2></div>
       <PlanStatus plan={plan}/>
     </div>
-    {plan.status === "building" && <div className="plan-live"><LiveProgress events={p.events.slice(-4)}/></div>}
+    {plan.status === "building" && <div className="plan-live"><LiveProgress events={p.events} onOpen={onOpen}/></div>}
     {plan.note && <p className="plan-note">{plan.note}</p>}
     <PrepList p={p} onOpen={onOpen}/>
     {plan.steps.length > 0 && <>

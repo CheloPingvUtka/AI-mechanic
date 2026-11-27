@@ -235,7 +235,7 @@ export default function WizardPage() {
         {screen === "ticket" && vehicle && <>
           {s.ticket ? <TicketCard ticket={s.ticket}/> : s.result
             && <ResultCard result={s.result} busy={s.busy} hasTicket={false} vehicleFuel={vehicle.fuel} onTicket={confirm => void s.createTicket(confirm)} big/>}
-          {s.busy && <div className="plan-live"><LiveProgress events={s.live}/></div>}
+          {s.busy && <div className="plan-live"><LiveProgress events={s.live} onOpen={setViewer}/></div>}
         </>}
       </main>
 
@@ -324,7 +324,7 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
       : building ? <div className="work-status"><Loader2 size={28} className="spin"/><div>
           <b>{t("work.building", "Ищу шаги в руководстве…")}</b>
           <p>{t("work.buildingHint", "Пока подготовьте всё по списку.")}</p>
-          <LiveProgress events={p.events.slice(-2)}/>
+          <LiveProgress events={p.events} onOpen={onOpen}/>
         </div></div>
       : plan.status === "failed" ? <div className="work-status bad"><AlertTriangle size={28}/><div>
           <b>{t("work.failed", "Шаги не собрались")}</b><p>{t("work.failedHint", "Нажмите «Собрать заново».")}</p>

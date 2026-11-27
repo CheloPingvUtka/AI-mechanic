@@ -193,7 +193,7 @@ export type AgentEvent =
   | { type: "thinking" | "checking" }
   | { type: "fixing"; problems: string[] }
   | { type: "tool"; name: string; args: Record<string, unknown> }
-  | { type: "tool_result"; name: string; error?: string; found?: { manual: string; pdf_page: number }[];
+  | { type: "tool_result"; name: string; error?: string; found?: { manual_id?: string; manual: string; pdf_page: number }[];
       ticket_id?: string; status?: string; session_id?: string };
 
 export interface ChatMessage {

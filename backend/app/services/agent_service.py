@@ -76,9 +76,13 @@ def summarize(name: str, result: dict) -> dict:
     if "error" in result:
         return {"error": result["error"]}
     if name == "search_manual":
-        return {"found": [{"manual": f.get("manual"), "pdf_page": f.get("pdf_page")} for f in result.get("found", [])]}
+        return {"found": [{"manual_id": f["ref"].partition(":")[0], "manual": f.get("manual"), "pdf_page": f.get("pdf_page")}
+                          for f in result.get("found", [])]}
     if name == "view_page":
-        return {"ref": result.get("ref")}
+        manual_id, _, page = (result.get("ref") or "").partition(":")
+        m = BY_ID.get(manual_id)
+        return {"ref": result.get("ref"), "found": [{"manual_id": manual_id, "manual": m.short if m else manual_id,
+                                                     "pdf_page": int(page)}] if m and page.isdigit() else []}
     if name == "get_diagnosis":
         return {k: result.get(k) for k in ("session_id", "status", "anomaly_type", "anomaly_title", "confidence")}
     if name == "create_ticket":
