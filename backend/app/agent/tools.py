@@ -9,6 +9,7 @@ import httpx
 from pydantic import ValidationError
 
 from app.agent.checks import numbers, quote_in
+from app.agent.plan import WorkPlan
 from app.domain.diagnostic_rules import (
     OPERATION_BAN,
     URGENCY_MEANING,
@@ -35,6 +36,7 @@ class AgentState:
     diagnosis: DiagnoseResponse | None = None
     hits: dict[str, Hit] = field(default_factory=dict)
     warning_confirmed: bool = False  # set by the mechanic's explicit confirmation in the UI
+    plan: "WorkPlan | None" = None  # filled by the background plan builder (services/plan_service.py)
 
 
 TOOLS = [

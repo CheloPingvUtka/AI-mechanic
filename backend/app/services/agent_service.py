@@ -166,6 +166,10 @@ class AgentService:
         text = payload.message
         if payload.confirm_warning:
             text += "\n[Механик прочитал предупреждение о качестве записи и подтверждает создание заявки.]"
+        if state.plan and (state.plan.steps or state.plan.tools):
+            plan_steps = "; ".join(f"{i + 1}) {st.text[:80]}" for i, st in enumerate(state.plan.steps[:12]))
+            text += (f"\n[Рабочий план ({'готов' if state.plan.status == 'ready' else 'собирается в фоне'}), "
+                     f"механик его видит. Шаги: {plan_steps or 'пока нет'}]")
         if payload.images:
             text += f"\n[Механик приложил фото: {len(payload.images)} шт.]"
             content = [{"type": "text", "text": text}] + [

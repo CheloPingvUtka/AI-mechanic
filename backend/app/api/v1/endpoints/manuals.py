@@ -20,7 +20,8 @@ def _guard(fn, *args, **kwargs):
 @router.get("", summary="Руководства: обозначение, двигатели, официальный источник")
 def list_manuals():
     return [
-        {"id": m.id, "title": m.title, "short": m.short, "engines": m.engines, "official_url": m.official_url}
+        {"id": m.id, "title": m.title, "short": m.short, "engines": m.engines, "official_url": m.official_url,
+         "official_note": m.official_note}
         for m in MANUALS
     ]
 

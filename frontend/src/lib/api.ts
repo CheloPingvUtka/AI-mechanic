@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AgentEvent, Assessment, ChatReply, FleetVehicle, Manual, Ticket } from "../types/domain";
+import type { AgentEvent, Assessment, ChatReply, FleetVehicle, Manual, Ticket, WorkPlan } from "../types/domain";
 
 // Dev: Vite proxies /api to the backend (vite.config.ts), so a phone on the same Wi-Fi works too.
 const base = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/$/, "");
@@ -23,6 +23,8 @@ export const api = {
   fleet: () => request<FleetVehicle[]>("/fleet"),
   tickets: () => request<Ticket[]>("/tickets"),
   manuals: () => request<Manual[]>("/manuals"),
+  startWork: (vehicle_id: string, session_id: string) =>
+    request<{ work_id: string }>("/work", { vehicle_id, session_id }),
   diagnose: (vehicle_id: string, session_id: string) =>
     request<Assessment>("/diagnostics", { vehicle_id, session_id }),
 };
@@ -100,4 +102,16 @@ export function shrinkPhoto(file: File, max = 1280): Promise<string> {
     img.onerror = () => reject(new Error("Не удалось открыть фото"));
     img.src = URL.createObjectURL(file);
   });
+}
+
+/** Background work plan: replays everything so far, then live updates; closes when the builder is done. */
+export function watchWork(workId: string, onPlan: (p: WorkPlan) => void, onEvent: (e: AgentEvent) => void) {
+  const source = new EventSource(apiUrl(`/work/${workId}/stream`));
+  source.onmessage = msg => {
+    const event = JSON.parse(msg.data);
+    if (event.type === "plan") onPlan(event.plan as WorkPlan);
+    else if (event.type === "done") source.close();
+    else onEvent(event as AgentEvent);
+  };
+  return () => source.close();
 }

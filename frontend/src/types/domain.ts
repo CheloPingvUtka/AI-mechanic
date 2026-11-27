@@ -56,6 +56,30 @@ export interface Manual {
   short: string;
   engines: string[];
   official_url: string | null;
+  official_note: string | null;
+}
+
+export interface PlanItem {
+  id: number;
+  text: string;
+  preliminary: boolean;
+  ref: string | null;
+  quote: string | null;
+  manual_id: string | null;
+  manual: string | null;
+  pdf_page: number | null;
+  figures: number;
+  measure: { name: string; unit: string; min: number | null; max: number | null } | null;
+}
+
+export interface WorkPlan {
+  tools: PlanItem[];
+  materials: PlanItem[];
+  safety: PlanItem[];
+  steps: PlanItem[];
+  status: "building" | "ready" | "failed";
+  note: string;
+  version: number;
 }
 
 export interface Ticket {

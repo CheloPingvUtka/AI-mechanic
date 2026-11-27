@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { api, chatStream, formatDate, shrinkPhoto, URGENCY_LABEL, useLoad, vehicleName } from "../../lib/api";
 import type { AgentEvent, Assessment, ChatMessage, Ticket } from "../../types/domain";
 import SourceCards, { PageViewer, type PageRef } from "../../components/ui/SourceCards";
+import PlanPanel from "../plan/PlanPanel";
 import { LiveProgress, ProgressLog } from "../../components/ui/AgentProgress";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Markdown from "../../components/ui/Markdown";
@@ -29,6 +30,7 @@ export default function MechanicPage() {
   const [live, setLive] = useState<AgentEvent[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
   const [viewer, setViewer] = useState<PageRef | null>(null);
+  const [workId, setWorkId] = useState<string | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   const conversation = useRef<string | null>(null);
   const chatBox = useRef<HTMLDivElement>(null);
@@ -36,7 +38,7 @@ export default function MechanicPage() {
   // New vehicle: latest check selected, everything else starts over.
   useEffect(() => {
     setSessionId(vehicle?.sessions[vehicle.sessions.length - 1].session_id ?? "");
-    setResult(null); setTicket(null); setMessages([]); setError("");
+    setResult(null); setTicket(null); setMessages([]); setError(""); setWorkId(null);
     conversation.current = null;
   }, [vehicle]);
   // Scroll only the chat box (desktop); never the page, so the verdict stays in view on a phone.
@@ -71,9 +73,16 @@ export default function MechanicPage() {
 
   async function runDiagnosis() {
     if (!vehicle) return;
-    setLoading(true); setError(""); setResult(null); setTicket(null);
+    setLoading(true); setError(""); setResult(null); setTicket(null); setWorkId(null);
     try {
-      setResult(await api.diagnose(vehicle.vehicle_id, sessionId));
+      const assessment = await api.diagnose(vehicle.vehicle_id, sessionId);
+      setResult(assessment);
+      if (assessment.status === "anomaly") {
+        // The plan builds in the background; chat shares its conversation, so both see the same pages.
+        const { work_id } = await api.startWork(vehicle.vehicle_id, sessionId);
+        conversation.current = work_id;
+        setWorkId(work_id);
+      }
       void send(`Объясни результат проверки ${sessionId}`);
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
@@ -102,6 +111,7 @@ export default function MechanicPage() {
       </section>
 
       {result && <ResultCard result={result} busy={busy} ticket={ticket} send={send}/>}
+      {workId && <PlanPanel workId={workId} onOpen={setViewer} onReport={text => void send(text)}/>}
       {ticket && <TicketCard ticket={ticket}/>}
 
       <section className="panel">
