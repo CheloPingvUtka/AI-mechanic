@@ -23,8 +23,8 @@ export const api = {
   fleet: () => request<FleetVehicle[]>("/fleet"),
   tickets: () => request<Ticket[]>("/tickets"),
   manuals: () => request<Manual[]>("/manuals"),
-  startWork: (vehicle_id: string, session_id: string) =>
-    request<{ work_id: string }>("/work", { vehicle_id, session_id }),
+  startWork: (vehicle_id: string, session_id: string, lang = "ru") =>
+    request<{ work_id: string }>("/work", { vehicle_id, session_id, lang }),
   diagnose: (vehicle_id: string, session_id: string) =>
     request<Assessment>("/diagnostics", { vehicle_id, session_id }),
 };
@@ -33,6 +33,7 @@ export interface ChatBody {
   vehicle_id: string;
   session_id: string;
   message: string;
+  lang: string;
   conversation_id: string | null;
   confirm_warning: boolean;
   images?: string[];
@@ -74,8 +75,6 @@ export function useLoad<T>(load: () => Promise<T>) {
   return { data, error };
 }
 
-export const URGENCY_LABEL = { high: "Высокий", medium: "Средний", low: "Низкий" } as const;
-export const STATE_LABEL = { quarantine: "Карантин", attention: "Внимание", normal: "Норма" } as const;
 export const STATE_BADGE = { quarantine: "danger", attention: "warning", normal: "success" } as const;
 
 export function vehicleName(v: FleetVehicle) {

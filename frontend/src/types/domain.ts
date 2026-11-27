@@ -19,6 +19,7 @@ export interface Diagnosis {
 export interface Assessment extends Diagnosis {
   confidence_threshold: number;
   ticket_blocked_reason: string | null;
+  block_code: "bad_recording" | "no_anomaly" | "no_fault_code" | "low_confidence" | "fuel_mismatch" | "needs_confirmation" | null;
   needs_warning_confirmation: boolean;
   urgency: { level: Urgency; meaning: string } | null;
 }
@@ -38,6 +39,7 @@ export interface FleetVehicle {
   sessions: Session[];
   state: FleetState;
   urgency: Urgency | null;
+  code: string;
   reason: string;
 }
 

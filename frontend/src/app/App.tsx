@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import ErrorBoundary from "../components/ErrorBoundary";
+import WizardPage from "../features/wizard/WizardPage";
 import MechanicPage from "../features/diagnostics/MechanicPage";
 import FleetPage from "../features/fleet/FleetPage";
 import TicketPage from "../features/tickets/TicketPage";
@@ -11,7 +12,8 @@ export default function App() {
     <AppShell>
       <ErrorBoundary resetKey={location.pathname + location.search}>
         <Routes>
-          <Route path="/" element={<MechanicPage />} />
+          <Route path="/" element={<WizardPage />} />
+          <Route path="/detail" element={<MechanicPage />} />
           <Route path="/fleet" element={<FleetPage />} />
           <Route path="/tickets" element={<TicketPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

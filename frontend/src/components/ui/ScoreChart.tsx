@@ -1,4 +1,5 @@
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import type { TFunction } from "i18next";
 import type { Session } from "../../types/domain";
 import { formatDate } from "../../lib/api";
 
@@ -22,11 +23,11 @@ export default function ScoreChart({ sessions }: { sessions: Session[] }) {
   </div>;
 }
 
-export function trend(sessions: Session[]): string {
+export function trend(sessions: Session[], t: TFunction): string {
   const scores = sessions.filter(s => s.status !== "check_failed").map(s => s.anomaly_score ?? 0);
-  if (scores.length < 2) return "Мало проверок для оценки динамики.";
-  const delta = scores[scores.length - 1] - scores[0];
-  if (delta > 0.15) return `Показатель растёт: ${scores[0]} → ${scores[scores.length - 1]} (проверок: ${scores.length}).`;
-  if (delta < -0.15) return `Показатель снижается: ${scores[0]} → ${scores[scores.length - 1]}.`;
-  return "Показатель без выраженной динамики.";
+  if (scores.length < 2) return t("trend.few", "Мало проверок для оценки динамики.");
+  const [first, last] = [scores[0], scores[scores.length - 1]];
+  if (last - first > 0.15) return t("trend.up", "Показатель растёт: {{a}} → {{b}} (проверок: {{n}}).", { a: first, b: last, n: scores.length });
+  if (last - first < -0.15) return t("trend.down", "Показатель снижается: {{a}} → {{b}}.", { a: first, b: last });
+  return t("trend.flat", "Показатель без выраженной динамики.");
 }
