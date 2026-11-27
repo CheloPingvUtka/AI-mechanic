@@ -2,11 +2,13 @@
 import base64
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
+from app.agent import figures
 from app.agent.checks import answer_problems, render_citations
 from app.agent.plan import WorkPlan
 from app.agent.tools import TOOLS, AgentState, run_tool
@@ -88,6 +90,41 @@ def summarize(name: str, result: dict) -> dict:
     if name == "create_ticket":
         return {"ticket_id": result.get("ticket_id"), "urgency": result.get("urgency")}
     return {}
+
+
+RENDERED_CITE = re.compile(r"\(([^()]+?), стр\. (\d+)\)")
+LIST_ITEM = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(.*)$")
+
+
+def step_key(text: str) -> str:
+    """Key of a list item of an answer; the UI computes the same one (Markdown.tsx stepKey)."""
+    plain = RENDERED_CITE.sub("", text).replace("**", "").replace("📖", "").lower()
+    return re.sub(r"[\W_]+", "", plain)[:60]
+
+
+async def step_figures(answer: str, cited: list[Hit], steps: list[Step], emit: Emit) -> dict[str, dict]:
+    """For list items that cite a page: the drawing the model picked for each ({step_key: figure}), none if none fits."""
+    by_ref = {(h.short, h.pdf_page): h for h in cited}
+    items = []
+    for line in answer.splitlines():
+        item = LIST_ITEM.match(line)
+        cite = item and RENDERED_CITE.search(item.group(1))
+        hit = cite and by_ref.get((cite.group(1), int(cite.group(2))))
+        if hit:
+            text = RENDERED_CITE.sub("", item.group(1)).replace("**", "").strip()
+            items.append((step_key(item.group(1)), text, hit.manual_id, hit.pdf_page))
+    if not items:
+        return {}
+    emit({"type": "figures"})
+    t0 = time.perf_counter()
+    picks, usage = await figures.pick(items)
+    if usage.get("prompt_tokens"):
+        steps.append(Step(name="llm:figures", prompt_tokens=usage["prompt_tokens"],
+                          completion_tokens=usage["completion_tokens"], cost_usd=usage["cost"],
+                          seconds=round(time.perf_counter() - t0, 2)))
+    manual = {h.manual_id: h.short for h in cited}
+    return {key: {"manual_id": manual_id, "manual": manual[manual_id], "pdf_page": pick.pdf_page, "figure": pick.figure}
+            for key, _, manual_id, _ in items if (pick := picks.get(key))}
 
 
 def official_links(contradiction: dict) -> list[dict]:
@@ -319,6 +356,7 @@ class AgentService:
                                   {"question": payload.message, "answer": answer[:2000]})
 
         answer, cited = render_citations(answer, state.hits)
+        pictures = await step_figures(answer, cited, steps, emit)
         new_ticket = tickets[-1] if len(tickets) > tickets_before else None
         conv.lang = payload.lang
         response = ChatResponse(
@@ -333,13 +371,14 @@ class AgentService:
             ticket=new_ticket,
             photo_check=state.photo_check,
             contradictions=[c | {"official": official_links(c)} for c in state.contradictions],
+            figures=pictures,
             steps=steps,
             cost_usd=round(sum(s.cost_usd for s in steps), 6),
         )
         conv.transcript += [
             {"role": "user", "text": payload.message, "images": len(payload.images)},
             {"role": "assistant", "text": answer, "sources": [x.model_dump() for x in response.sources],
-             "ticket": new_ticket, "cost": response.cost_usd},
+             "ticket": new_ticket, "cost": response.cost_usd, "figures": pictures},
         ]
         save_conversation(conv_id, conv)
         return response

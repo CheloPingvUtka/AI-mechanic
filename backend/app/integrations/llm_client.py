@@ -42,19 +42,19 @@ class LLMClient:
         self.api_key = api_key if api_key is not None else settings.llm_api_key
         self.model = model or settings.llm_model
 
-    async def chat(self, messages: list[dict], tools: list[dict], tool_choice: str = "auto") -> tuple[dict, dict]:
+    async def chat(self, messages: list[dict], tools: list[dict] | None, tool_choice: str = "auto") -> tuple[dict, dict]:
         """Returns (assistant message to append to history, usage incl. OpenRouter `cost` in USD)."""
         if not self.api_key:
             raise LLMError("LLM_API_KEY не задан в .env")
         body = {
             "model": self.model,
             "messages": messages,
-            "tools": tools,
-            "tool_choice": tool_choice,
             "temperature": 0.2,
             "max_tokens": settings.llm_max_tokens,
             "usage": {"include": True},
         }
+        if tools:
+            body |= {"tools": tools, "tool_choice": tool_choice}
         response = await post_with_retry(
             f"{self.base_url}/chat/completions", {"Authorization": f"Bearer {self.api_key}"}, body,
             settings.llm_timeout_seconds,

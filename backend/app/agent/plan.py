@@ -39,6 +39,8 @@ class PlanItem:
     pdf_page: int | None = None
     measure: Measure | None = None
     figures: int = 0  # pictures cut out of that page, for the step card
+    figure: int | None = None  # the picture the model chose for this step (index on figure_page), None = none fits
+    figure_page: int | None = None
     id: int = field(default_factory=lambda: next(_ids))
     added_at: float = field(default_factory=time.time)
 

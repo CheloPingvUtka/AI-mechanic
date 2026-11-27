@@ -140,6 +140,18 @@ def figures(manual_id: str, page: int) -> tuple[tuple[float, float, float, float
     return tuple(sorted(found, key=lambda b: -b[3]))
 
 
+def caption(manual_id: str, page: int, figure: int) -> str:
+    """Text right under a figure (its caption, «Рис. 12. ...»), if the page has a text layer."""
+    boxes = figures(manual_id, page)
+    if not 0 <= figure < len(boxes):
+        return ""
+    left, bottom, right, _ = boxes[figure]
+    with _lock:
+        textpage = _page(manual_id, page).get_textpage()
+        text = textpage.get_text_bounded(left=left - 20, bottom=bottom - 40, right=right + 20, top=bottom)
+    return " ".join(text.split())[:160]
+
+
 def _cache_file(name: str) -> Path:
     path = kb_path() / "index" / "images" / name
     path.parent.mkdir(parents=True, exist_ok=True)
