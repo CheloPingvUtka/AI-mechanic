@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowRight, CheckCircle2, Loader2, ShieldAlert, Truck } from "lucide-react";
+import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, Loader2, ShieldAlert, Truck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import MetricCard from "../../components/ui/MetricCard";
 import ScoreChart, { trend } from "../../components/ui/ScoreChart";
@@ -51,7 +51,10 @@ export default function FleetPage() {
           <td>{s.anomaly_type ? `${s.anomaly_type} ${faultTitle(t, s.anomaly_type, s.anomaly_title)}` : t(s.status)}</td>
           <td>{s.anomaly_score ?? "—"}</td>
         </tr>)}</tbody></table>
-        <Link className="button button-primary" to={`/?vehicle=${current.vehicle_id}&step=result`}>{t("fleet.open", "Открыть в рабочем месте")}<ArrowRight size={16}/></Link>
+        <div className="fleet-actions">
+          <Link className="button button-primary" to={`/?vehicle=${current.vehicle_id}&step=result`}>{t("fleet.open", "Открыть в рабочем месте")}<ArrowRight size={16}/></Link>
+          <Link className="button button-light" to={`/book/${current.vehicle_id}`}><BookOpen size={16}/>{t("book.title", "Сервисная книжка")}</Link>
+        </div>
       </section>}
     </div>
   </div>;

@@ -79,9 +79,90 @@ export interface WorkPlan {
   materials: PlanItem[];
   safety: PlanItem[];
   steps: PlanItem[];
+  // newer plans only; older snapshots lack them
+  disassembly?: PlanItem[];  // what to remove before the work
+  prep?: PlanItem[];         // vehicle and workplace preparation, in order
+  quality?: PlanItem[];      // checklist after the repair
+  aftercare?: PlanItem[];    // what to watch after the repair
+  conflicts?: Conflict[];    // manuals disagree
   status: "building" | "ready" | "failed";
   note: string;
   version: number;
+}
+
+/** Two manuals say different things: both quotes and where to ask the manufacturer. */
+export interface Conflict {
+  note: string;
+  sides: { manual_id: string; manual: string; pdf_page: number; quote: string }[];
+  official: { manual: string; url: string }[];
+}
+
+export type Stage = "prep" | "work" | "check" | "after";
+
+export interface WorkProgress {
+  steps: Record<string, { done: boolean; value: string }>;
+  checks: Record<string, boolean>;
+  stage: Stage | null;
+}
+
+/** GET /work?status=active: unfinished repairs. */
+export interface WorkSummary {
+  id: string;
+  vehicle_id: string;
+  session_id: string;
+  status: "active" | "done";
+  diagnosis: Diagnosis | null;
+  steps_total: number;
+  steps_done: number;
+  stage: Stage | null;
+  updated_at: number;
+}
+
+/** GET /work/{id}: everything to resume a repair. */
+export interface WorkSnapshot {
+  work_id: string;
+  vehicle_id: string;
+  session_id: string;
+  status: "active" | "done";
+  plan: WorkPlan | null;
+  progress: WorkProgress | null;
+  chat: { role: "user" | "assistant"; text: string; sources?: Source[]; ticket?: Ticket | null; cost?: number }[];
+}
+
+export type BookKind = "diagnosis" | "recheck" | "ticket" | "defect" | "repair" | "recommendation" | "note";
+
+export interface BookEntry {
+  id: number | null;  // null for checks taken from the fleet history
+  vehicle_id: string;
+  work_id: string | null;
+  session_id: string | null;
+  created_at: number;  // unix seconds
+  kind: BookKind;
+  title: string;
+  text: string;
+  data: Record<string, unknown> | null;
+  photos: number[];
+}
+
+export interface Book {
+  vehicle: Pick<FleetVehicle, "vehicle_id" | "garage_no" | "make" | "model" | "vehicle_type" | "engine_model" | "fuel">;
+  entries: BookEntry[];
+}
+
+export interface Dispute {
+  id: number;
+  vehicle_id: string;
+  work_id: string | null;
+  created_at: number;
+  kind: "contradiction" | "unverified_numbers" | "ticket_rejected" | "low_confidence" | "fuel_mismatch" | "photo_mismatch" | string;
+  detail: string;
+  resolved: boolean;
+}
+
+export interface PhotoCheck {
+  shows: string;
+  matches: "yes" | "no" | "unclear";
+  reason: string;
 }
 
 export interface Ticket {
@@ -103,6 +184,8 @@ export interface ChatReply {
   sources: Source[];
   ticket: Ticket | null;
   cost_usd: number;
+  photo_check?: PhotoCheck | null;
+  contradictions?: Conflict[];
 }
 
 /** Live progress from /assistant/chat/stream. */
@@ -122,4 +205,6 @@ export interface ChatMessage {
   error?: boolean;
   events?: AgentEvent[];
   images?: string[];
+  photoCheck?: PhotoCheck | null;
+  contradictions?: Conflict[];
 }

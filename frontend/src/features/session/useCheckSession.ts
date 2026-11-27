@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, chatStream, shrinkPhoto } from "../../lib/api";
+import { api, chatStream, shrinkPhoto, type ChatBody } from "../../lib/api";
 import type { AgentEvent, Assessment, ChatMessage, FleetVehicle, Ticket } from "../../types/domain";
 
 export type Lang = "ru" | "uz" | "ko";
@@ -22,13 +22,14 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
   const [photos, setPhotos] = useState<string[]>([]);
   const conversation = useRef<string | null>(null);
   const busyRef = useRef(false);
+  const context = useRef<ChatBody["context"]>(null);  // set by the work screen: where the mechanic is
 
   // New vehicle: latest check selected, everything else starts over.
   useEffect(() => {
     setSessionId(vehicle?.sessions[vehicle.sessions.length - 1].session_id ?? "");
     setResult(null); setTicket(null); setMessages([]); setError(""); setWorkId(null);
     conversation.current = null;
-  }, [vehicle]);
+  }, [vehicle?.vehicle_id]);  // eslint-disable-line react-hooks/exhaustive-deps -- a reloaded fleet list is not a new vehicle
 
   const selectSession = useCallback((id: string) => {
     setSessionId(id); setResult(null); setTicket(null); setWorkId(null);
@@ -54,11 +55,12 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
     try {
       const reply = await chatStream({
         vehicle_id: vehicle.vehicle_id, session_id: opts.session ?? sessionId, message: text, lang,
-        conversation_id: conversation.current, confirm_warning: !!opts.confirmWarning, images,
+        conversation_id: conversation.current, confirm_warning: !!opts.confirmWarning, images, context: context.current,
       }, e => { events.push(e); setLive([...events]); });
       conversation.current = reply.conversation_id;
       if (reply.ticket) setTicket(reply.ticket);
-      setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", text: reply.answer, sources: reply.sources, cost: reply.cost_usd, events }]);
+      setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", text: reply.answer, sources: reply.sources, cost: reply.cost_usd, events,
+        photoCheck: reply.photo_check, contradictions: reply.contradictions }]);
       return reply.answer;
     } catch (e) {
       setMessages(m => [...m, { id: crypto.randomUUID(), role: "assistant", error: true,
@@ -88,12 +90,30 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
     } finally { setLoading(false); }
   }
 
+  /** Back to a saved repair: its check, verdict and chat; no new plan is built. */
+  async function resume(workId: string): Promise<string | null> {
+    if (!vehicle) return null;
+    setLoading(true); setError("");
+    try {
+      const w = await api.work(workId);
+      conversation.current = w.work_id;
+      setSessionId(w.session_id); setWorkId(w.work_id);
+      setMessages(w.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost })));
+      setTicket([...w.chat].reverse().find(m => m.ticket)?.ticket ?? null);
+      setResult(await api.diagnose(w.vehicle_id, w.session_id));
+      return w.session_id;
+    } catch (e) {
+      setError((e as Error).message);
+      return null;
+    } finally { setLoading(false); }
+  }
+
   const createTicket = (confirmWarning = false) =>
     send(t("chat.createTicket", "Создай заявку на дефектовку"), { confirmWarning });
 
   return {
     lang, sessionId, selectSession, result, ticket, loading, error, workId,
-    busy, messages, live, photos, addPhotos, removePhoto, send, runDiagnosis, createTicket,
+    busy, messages, live, photos, addPhotos, removePhoto, send, runDiagnosis, createTicket, resume, context,
   };
 }
 

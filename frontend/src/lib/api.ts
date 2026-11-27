@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import type { AgentEvent, Assessment, ChatReply, FleetVehicle, Manual, Ticket, WorkPlan } from "../types/domain";
+import type { AgentEvent, Assessment, Book, ChatReply, Dispute, FleetVehicle, Manual, Ticket, WorkPlan, WorkProgress, WorkSnapshot, WorkSummary } from "../types/domain";
 
 // Dev: Vite proxies /api to the backend (vite.config.ts), so a phone on the same Wi-Fi works too.
 const base = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/$/, "");
 export const apiUrl = (path: string) => base + path;
 
-async function request<T>(path: string, body?: unknown): Promise<T> {
+async function request<T>(path: string, body?: unknown, method = "POST"): Promise<T> {
   const response = await fetch(base + path, body === undefined ? undefined : {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -27,7 +27,19 @@ export const api = {
     request<{ work_id: string }>("/work", { vehicle_id, session_id, lang }),
   diagnose: (vehicle_id: string, session_id: string) =>
     request<Assessment>("/diagnostics", { vehicle_id, session_id }),
+  activeWorks: () => request<WorkSummary[]>("/work?status=active"),
+  work: (id: string) => request<WorkSnapshot>(`/work/${id}`),
+  saveProgress: (id: string, progress: WorkProgress) => request<unknown>(`/work/${id}/progress`, progress, "PUT"),
+  finishWork: (id: string) => request<{ entries: number[] }>(`/work/${id}/finish`, {}),
+  rebuildWork: (id: string) => request<unknown>(`/work/${id}/rebuild`, {}),
+  book: (vehicleId: string) => request<Book>(`/book/${encodeURIComponent(vehicleId)}`),
+  addNote: (vehicleId: string, text: string, photos: string[]) =>
+    request<{ id: number }>(`/book/${encodeURIComponent(vehicleId)}/entries`, { kind: "note", text, photos }),
+  disputes: () => request<Dispute[]>("/disputes"),
+  resolveDispute: (id: number, resolved: boolean) => request<unknown>(`/disputes/${id}`, { resolved }, "PATCH"),
 };
+
+export const photoUrl = (id: number) => apiUrl(`/photos/${id}`);
 
 export interface ChatBody {
   vehicle_id: string;
@@ -37,6 +49,7 @@ export interface ChatBody {
   conversation_id: string | null;
   confirm_warning: boolean;
   images?: string[];
+  context?: { stage: string; step_index: number | null; step_text: string } | null;  // where the mechanic is in the work
 }
 
 /** Agent reply over Server-Sent Events: onEvent gets live progress, the promise resolves with the answer. */
@@ -81,8 +94,8 @@ export function vehicleName(v: FleetVehicle) {
   return v.model?.startsWith(v.make) ? v.model : [v.make, v.model].filter(Boolean).join(" ");
 }
 
-export function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+export function formatDate(iso: string | number) {
+  return new Date(typeof iso === "number" ? iso * 1000 : iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 /** Phone photos are several MB: shrink to <= max px JPEG before sending to the agent. */

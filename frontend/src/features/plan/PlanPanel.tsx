@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { BookOpen, CheckCircle2, Circle, HardHat, Loader2, Package, Send, Sparkles, Wrench } from "lucide-react";
+import { BookOpen, CheckCircle2, Circle, Cog, HardHat, Loader2, Package, Send, Sparkles, Truck, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import type { PlanItem, WorkPlan } from "../../types/domain";
 import { LiveProgress } from "../../components/ui/AgentProgress";
 import { figureImage, pageImage, thumb, type PageRef } from "../../components/ui/SourceCards";
@@ -8,7 +9,7 @@ import { inNorm, normText, type PlanState, type StepState } from "./usePlan";
 
 export function pageRef(item: PlanItem): PageRef | null {
   return item.manual_id && item.pdf_page
-    ? { manual_id: item.manual_id, manual: item.manual ?? "", pdf_page: item.pdf_page, figures: item.figures }
+    ? { manual_id: item.manual_id, manual: item.manual ?? "", pdf_page: item.pdf_page, figures: item.figures, hl: item.quote }
     : null;
 }
 
@@ -21,25 +22,47 @@ export function PlanStatus({ plan }: { plan: WorkPlan }) {
   </span>;
 }
 
-/** What to prepare: tools, parts, safety. Preliminary items are marked; new ones flash. */
-export function PrepList({ p, onOpen }: { p: PlanState; onOpen: (r: PageRef) => void }) {
+export type Section = { key: string; title: string; icon: ReactNode; items: PlanItem[]; ordered?: boolean; danger?: boolean };
+
+/** Plan items by section. Preliminary items are marked; new ones flash; `checkable` = a big tick list. */
+export function CheckList({ p, sections, onOpen, checkable = false }: {
+  p: PlanState; sections: Section[]; onOpen: (r: PageRef) => void; checkable?: boolean;
+}) {
   const { t } = useTranslation();
-  const plan = p.plan!;
-  const chips = (items: PlanItem[], icon: ReactNode) => items.map(i => {
+  const shown = sections.filter(x => x.items.length);
+  if (!shown.length) return null;
+  const row = (i: PlanItem, text: string, icon: ReactNode) => {
     const ref = pageRef(i);
-    return <li key={i.id} className={`prep-item ${i.preliminary ? "preliminary" : ""} ${p.isNew(i) ? "is-new" : ""}`}>
-      {icon}<span>{i.text}</span>
+    const done = checkable && p.stepState(i.id).done;  // ticks share the step-state store (ids are unique per plan)
+    return <li key={i.id} className={`prep-item ${i.preliminary ? "preliminary" : ""} ${p.isNew(i) ? "is-new" : ""} ${done ? "done" : ""}`}>
+      {checkable ? <button className="prep-check" aria-pressed={done} onClick={() => p.setStep(i.id, { done: !done })}>
+          {done ? <CheckCircle2 size={28}/> : <Circle size={28}/>}<span>{text}</span></button>
+        : <>{icon}<span>{text}</span></>}
       {i.preliminary ? <em>{t("plan.preliminary", "предварительно")}</em>
         : ref && <button className="cite-chip" onClick={() => onOpen(ref)}>📖 {ref.pdf_page}</button>}
       {p.isNew(i) && <strong className="new-badge"><Sparkles size={11}/>{t("plan.new", "новое")}</strong>}
     </li>;
-  });
-  if (!plan.tools.length && !plan.materials.length && !plan.safety.length) return null;
-  return <div className="prep-grid">
-    {plan.tools.length > 0 && <div><h3><Wrench size={16}/>{t("plan.tools", "Инструмент")}</h3><ul>{chips(plan.tools, <Wrench size={14}/>)}</ul></div>}
-    {plan.materials.length > 0 && <div><h3><Package size={16}/>{t("plan.materials", "Запчасти и материалы")}</h3><ul>{chips(plan.materials, <Package size={14}/>)}</ul></div>}
-    {plan.safety.length > 0 && <div><h3><HardHat size={16}/>{t("plan.safety", "Безопасность")}</h3><ul>{chips(plan.safety, <HardHat size={14}/>)}</ul></div>}
-  </div>;
+  };
+  return <div className="prep-grid">{shown.map(x => <div key={x.key} className={x.danger ? "prep-danger" : ""}>
+    <h3>{x.icon}{x.title}</h3>
+    <ul>{x.items.map((i, n) => row(i, x.ordered ? `${n + 1}. ${i.text}` : i.text, x.icon))}</ul>
+  </div>)}</div>;
+}
+
+/** Stage 1 of the work: safety first, then the vehicle and workplace, tools, parts, what to remove. */
+export function prepSections(plan: WorkPlan, t: TFunction): Section[] {
+  return [
+    { key: "safety", title: t("plan.safety", "Безопасность"), icon: <HardHat size={18}/>, items: plan.safety, danger: true },
+    { key: "prep", title: t("plan.prepCar", "Подготовка машины и места"), icon: <Truck size={18}/>, items: plan.prep ?? [], ordered: true },
+    { key: "tools", title: t("plan.tools", "Инструмент"), icon: <Wrench size={18}/>, items: plan.tools },
+    { key: "materials", title: t("plan.materials", "Запчасти и материалы"), icon: <Package size={18}/>, items: plan.materials },
+    { key: "disassembly", title: t("plan.disassembly", "Что снять"), icon: <Cog size={18}/>, items: plan.disassembly ?? [], ordered: true },
+  ];
+}
+
+export function PrepList({ p, onOpen }: { p: PlanState; onOpen: (r: PageRef) => void }) {
+  const { t } = useTranslation();
+  return <CheckList p={p} sections={prepSections(p.plan!, t)} onOpen={onOpen}/>;
 }
 
 /** One step: text, measurement against the manual norm, the page picture, a big done toggle. */
@@ -72,10 +95,11 @@ export function StepCard({ item, n, state, setStep, onOpen, big = false, isNew =
             <img src={thumb(ref)} alt="" loading="lazy"/><span><BookOpen size={13}/> {ref.manual}, {t("page", "стр.")} {ref.pdf_page}</span>
           </button>)}
     </div>
-    <button className="step-done" onClick={() => setStep({ done: !state.done })} aria-pressed={state.done}>
+    {/* big (wizard) card: "done" is the action bar's job; here it only shows, and undoes, the mark */}
+    {(!big || state.done) && <button className="step-done" onClick={() => setStep({ done: !state.done })} aria-pressed={state.done}>
       {state.done ? <CheckCircle2 size={26}/> : <Circle size={26}/>}
       <span>{state.done ? t("plan.doneYes", "Сделано") : t("plan.doneNo", "Отметить")}</span>
-    </button>
+    </button>}
   </li>;
 }
 

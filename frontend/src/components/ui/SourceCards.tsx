@@ -4,14 +4,18 @@ import { useTranslation } from "react-i18next";
 import { api, apiUrl, useLoad } from "../../lib/api";
 import type { Source } from "../../types/domain";
 
-export type PageRef = { manual_id: string; manual: string; pdf_page: number; figures: number };
+// hl: text to highlight on the page (a quote or an excerpt)
+export type PageRef = { manual_id: string; manual: string; pdf_page: number; figures: number; hl?: string | null };
 
-export const pageImage = (r: PageRef, w = 1000) => apiUrl(`/manuals/${r.manual_id}/pages/${r.pdf_page}.png?w=${w}`);
+export const pageImage = (r: PageRef, w = 1000) =>
+  apiUrl(`/manuals/${r.manual_id}/pages/${r.pdf_page}.png?w=${w}${r.hl ? `&hl=${encodeURIComponent(r.hl.slice(0, 600))}` : ""}`);
 export const figureImage = (r: PageRef, i: number, w = 700) =>
   apiUrl(`/manuals/${r.manual_id}/pages/${r.pdf_page}/figures/${i}.png?w=${w}`);
 export const pdfLink = (r: PageRef) => apiUrl(`/manuals/${r.manual_id}/pdf#page=${r.pdf_page}`);
 /** Best small picture for a page: its first figure, otherwise the page itself. */
-export const thumb = (r: PageRef) => (r.figures ? figureImage(r, 0, 360) : pageImage(r, 360));
+export const thumb = (r: PageRef) => (r.figures ? figureImage(r, 0, 360) : pageImage({ ...r, hl: null }, 360));
+/** A chat source opened on its page, with its excerpt highlighted. */
+export const withExcerpt = (s: Source): PageRef => ({ ...s, hl: s.excerpt });
 
 function useManual(manualId: string) {
   const { data } = useLoad(api.manuals);
@@ -38,8 +42,10 @@ export function PageViewer({ page, onClose }: { page: PageRef; onClose: () => vo
         {manual?.official_url && <a className="button button-light" href={manual.official_url} target="_blank" rel="noreferrer"><Globe size={18}/>{t("officialSite")}<ExternalLink size={14}/></a>}
       </div>
       {manual?.official_note && <p className="muted">{manual.official_note}</p>}
+      {/* a highlighted quote is on the page itself, so the page goes first */}
+      {page.hl && <img className="viewer-page" src={pageImage(page, 1400)} alt={`${page.manual}, ${t("page")} ${page.pdf_page}`}/>}
       {Array.from({ length: page.figures }, (_, i) => <img key={i} className="viewer-figure" src={figureImage(page, i, 1200)} alt={`${t("figure")} ${i + 1}`}/>)}
-      <img className="viewer-page" src={pageImage(page, 1400)} alt={`${page.manual}, ${t("page")} ${page.pdf_page}`}/>
+      {!page.hl && <img className="viewer-page" src={pageImage(page, 1400)} alt={`${page.manual}, ${t("page")} ${page.pdf_page}`}/>}
     </div>
   </div>;
 }
@@ -52,7 +58,7 @@ export default function SourceCards({ sources, onOpen }: { sources: Source[]; on
     <div className="source-cards-title"><BookOpen size={14}/>{t("sources")} · {sources.length}</div>
     <div className="source-strip">
       {sources.map(s => <div key={s.manual_id + s.pdf_page} className="source-card">
-        <button className="source-thumb" onClick={() => onOpen(s)} aria-label={`${t("openPage")} ${s.pdf_page}`}>
+        <button className="source-thumb" onClick={() => onOpen(withExcerpt(s))} aria-label={`${t("openPage")} ${s.pdf_page}`}>
           <img src={thumb(s)} alt="" loading="lazy"/>
           <span className="source-page">{t("page")} {s.pdf_page}</span>
         </button>
@@ -60,7 +66,7 @@ export default function SourceCards({ sources, onOpen }: { sources: Source[]; on
           <b>{s.manual}</b>
           {s.ocr && <span className="badge warning">{t("scanCheck")}</span>}
           <div className="source-buttons">
-            <button onClick={() => onOpen(s)}>{t("openPage")}</button>
+            <button onClick={() => onOpen(withExcerpt(s))}>{t("openPage")}</button>
             <button onClick={() => setQuote(quote === s.manual_id + s.pdf_page ? null : s.manual_id + s.pdf_page)}>{t("quote")}</button>
           </div>
         </div>
