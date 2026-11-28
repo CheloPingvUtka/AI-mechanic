@@ -224,7 +224,6 @@ const ko = {
   voice: {
     mode: "음성 모드",
     modeOff: "꺼짐. 손을 쓰지 않고 말하려면 켜세요",
-    modeOn: "켜짐: 버튼 없이 듣고 답변을 소리 내어 읽어요",
     handsFreeOff: "음성 조작",
     handsFreeOn: "음성 조작: 켜짐",
     hint: "“다음”, “완료”, “다시”, 측정값 또는 질문",
@@ -237,6 +236,9 @@ const ko = {
     speakNow: "말하세요",
     speaking: "말하는 중…",
     tapToSpeak: "누르고 말하세요",
+    sayWake: "«도우미»라고 말하세요",
+    wakeHint: "문장 앞에: «도우미, 다음», «도우미, 기준이 뭐야?»",
+    modeOn: "켜짐: «도우미»라고 말한 뒤 명령하세요, 답은 소리 내어 읽어 드려요",
   },
   wizard: {
     aiAnswering: "인공지능이 답하는 중…",

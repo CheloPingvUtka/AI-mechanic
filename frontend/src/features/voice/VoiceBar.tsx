@@ -6,7 +6,8 @@ function useVoiceLabel(voice: Voice) {
   const { t } = useTranslation();
   return {
     off: t("voice.tapToSpeak", "Нажмите и говорите"),
-    idle: voice.handsFree ? t("voice.listening", "Слушаю… говорите") : t("voice.speakNow", "Говорите"),
+    idle: !voice.handsFree ? t("voice.speakNow", "Говорите")
+      : voice.awake ? t("voice.listening", "Слушаю… говорите") : t("voice.sayWake", "Скажите «Помощник»"),
     recording: t("voice.recording", "Записываю…"),
     recognising: t("voice.recognising", "Распознаю…"),
     speaking: t("voice.speaking", "Говорю…"),
@@ -31,7 +32,9 @@ export function VoiceLine({ voice, heard, title, hint }: { voice: Voice; heard: 
   return <span className="voice-text">
     <b>{voice.status === "off" && title ? title : label}</b>
     <small>{voice.error === "mic" ? t("voice.noMic", "Нет доступа к микрофону — разрешите его в браузере")
-      : voice.error || (heard ? `«${heard}»` : hint ?? t("voice.hint", "«дальше», «готово», «повтори», число замера или вопрос"))}</small>
+      : voice.error || (heard ? `«${heard}»` : voice.handsFree && !voice.awake
+        ? t("voice.wakeHint", "В начале фразы: «Помощник, дальше», «Помощник, какая норма?»")
+        : hint ?? t("voice.hint", "«дальше», «готово», «повтори», число замера или вопрос"))}</small>
   </span>;
 }
 
@@ -42,7 +45,7 @@ export function VoiceModeToggle({ voice }: { voice: Voice }) {
     onClick={() => void voice.toggleHandsFree()}>
     {voice.handsFree ? <Ear size={22}/> : <EarOff size={22}/>}
     <span><b>{t("voice.mode", "Голосовой режим")}</b>
-      <small>{voice.handsFree ? t("voice.modeOn", "Включён: слушаю без кнопки и читаю ответы вслух")
+      <small>{voice.handsFree ? t("voice.modeOn", "Включён: скажите «Помощник» и команду, ответы читаю вслух")
         : t("voice.modeOff", "Выключен. Включите, чтобы говорить без рук")}</small></span>
     <i className="switch" aria-hidden="true"/>
   </button>;

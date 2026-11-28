@@ -36,13 +36,28 @@ export function parseCommand(text: string): Command | null {
   return hit ? ({ type: hit[0] } as Command) : null;
 }
 
-// What the app says while the agent works, so the mechanic knows it heard him and is busy.
-const FILLERS: Record<string, { start: string[]; wait: string[] }> = {
-  ru: { start: ["Думаю.", "Минутку.", "Сейчас посмотрю.", "Секунду, ищу в руководстве."],
+// Hands-free mode reacts only to phrases addressed to it: they start with the wake word («Помощник, дальше»).
+// Any language's word works whatever the interface language. After it, follow-ups need no word for a while.
+const WAKE = /^\s*(?:эй[,\s]+)?(?:помо[щш]ни[кц]а?|ёрдамчи|йордамчи|yordamchi|yordamchim|도우미야?)(?=$|[\s,.!?:;—-])[\s,.!?:;—-]*/i;
+const AWAKE_MS = 10000;
+
+/** The phrase without the wake word; null when it was not addressed to the assistant. */
+export function stripWake(text: string): string | null {
+  const m = text.match(WAKE);
+  return m ? text.slice(m[0].length).trim() : null;
+}
+
+// What the app says: "listen" when only the wake word was said; "start"/"wait" while the agent works,
+// so the mechanic knows it heard him and is busy.
+const FILLERS: Record<string, { listen: string[]; start: string[]; wait: string[] }> = {
+  ru: { listen: ["Слушаю.", "Да, слушаю."],
+        start: ["Думаю.", "Минутку.", "Сейчас посмотрю.", "Секунду, ищу в руководстве."],
         wait: ["Ещё чуть-чуть.", "Почти готово.", "Ещё ищу, подождите.", "Сверяю с руководством."] },
-  uz: { start: ["O‘ylayapman.", "Bir daqiqa.", "Hozir qarayman.", "Bir soniya, qo‘llanmadan qidiryapman."],
+  uz: { listen: ["Eshitaman.", "Ha, eshitaman."],
+        start: ["O‘ylayapman.", "Bir daqiqa.", "Hozir qarayman.", "Bir soniya, qo‘llanmadan qidiryapman."],
         wait: ["Yana biroz.", "Deyarli tayyor.", "Hali qidiryapman, kuting.", "Qo‘llanma bilan solishtiryapman."] },
-  ko: { start: ["생각하고 있어요.", "잠깐만요.", "지금 찾아볼게요.", "잠시만요, 설명서를 찾고 있어요."],
+  ko: { listen: ["네, 듣고 있어요.", "네, 말씀하세요."],
+        start: ["생각하고 있어요.", "잠깐만요.", "지금 찾아볼게요.", "잠시만요, 설명서를 찾고 있어요."],
         wait: ["조금만 더요.", "거의 다 됐어요.", "아직 찾고 있어요, 기다려 주세요.", "설명서와 맞춰 보고 있어요."] },
 };
 const FIRST_FILLER_MS = 700, NEXT_FILLER_MS = 9000;
@@ -81,7 +96,8 @@ export function useVoice(lang: string, onText: (text: string) => void) {
   const [handsFree, setHandsFree] = useState(false);
   const [level, setLevel] = useState(0);
   const [error, setError] = useState("");
-  const st = useRef({ vad: null as MicVAD | null, loading: null as Promise<MicVAD | null> | null, listening: false,
+  const [awake, setAwake] = useState(false);  // the wake word was heard: follow-ups need no word for a while
+  const st = useRef({ manual: false, awakeUntil: 0, awakeTimer: 0, vad: null as MicVAD | null, loading: null as Promise<MicVAD | null> | null, listening: false,
     handsFree: false, speaking: false, heardWhileSpeaking: false, maxTimer: 0,
     audio: null as HTMLAudioElement | null, waiting: false, fillerTimer: 0, lastFiller: "", fillerPlaying: false,
     fillers: new Map<string, string>() });
@@ -91,14 +107,32 @@ export function useVoice(lang: string, onText: (text: string) => void) {
   langRef.current = lang;
   const idle = () => setStatus(st.current.listening ? "idle" : "off");
 
+  function wake() {
+    const s = st.current;
+    s.awakeUntil = Date.now() + AWAKE_MS;
+    setAwake(true);
+    clearTimeout(s.awakeTimer);
+    s.awakeTimer = window.setTimeout(() => setAwake(false), AWAKE_MS);
+  }
+
   async function recognise(pcm: Float32Array) {
+    const s = st.current;
+    const manual = s.manual;  // a push of the mic button: addressed to the assistant, no wake word needed
+    s.manual = false;
     setStatus("recognising");
     try {
       const r = await fetch(apiUrl("/voice/transcribe"), { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ audio: wavBase64(pcm), lang: langRef.current }) });
       if (!r.ok) throw new Error(`STT ${r.status}`);
-      const { text } = await r.json();
-      if (text?.trim()) onTextRef.current(text.trim());
+      let phrase: string = (await r.json()).text?.trim() ?? "";
+      if (phrase && s.handsFree && !manual) {
+        const rest = stripWake(phrase);
+        if (rest === null && Date.now() > s.awakeUntil) { idle(); return; }  // talk around, not to the assistant
+        if (rest !== null) phrase = rest;
+        wake();
+        if (!phrase) { idle(); void filler("listen"); return; }  // only «Помощник»: «Слушаю»
+      }
+      if (phrase) onTextRef.current(phrase);
     } catch (e) { setError((e as Error).message); }
     idle();
   }
@@ -165,6 +199,7 @@ export function useVoice(lang: string, onText: (text: string) => void) {
   /** Push-to-talk: one phrase. Pressing again while listening stops (what was said so far is sent). */
   async function listen() {
     const s = st.current;
+    s.manual = true;
     if (s.listening && !s.handsFree) { stop(); idle(); return; }
     if (!s.listening) await start();
   }
@@ -186,6 +221,7 @@ export function useVoice(lang: string, onText: (text: string) => void) {
 
   async function play(url: string) {
     const s = st.current;
+    const wasAwake = Date.now() < s.awakeUntil;  // a conversation is going on: after the app speaks, no word needed again
     const audio = s.audio = new Audio(url);
     s.speaking = true; setStatus("speaking");
     await new Promise<void>(resolve => {
@@ -193,6 +229,7 @@ export function useVoice(lang: string, onText: (text: string) => void) {
       void audio.play().catch(() => resolve());
     });
     if (s.audio === audio) { s.audio = null; s.speaking = false; idle(); }  // not replaced by a newer one
+    if (wasAwake && s.handsFree) wake();
   }
 
   /** Reads text aloud: verified server voice, else the browser's voice for this language, else silent. */
@@ -226,7 +263,7 @@ export function useVoice(lang: string, onText: (text: string) => void) {
   async function warmUp() {
     const s = st.current;
     const set = FILLERS[langRef.current] ?? FILLERS.ru;
-    for (const text of [...set.start, ...set.wait]) {
+    for (const text of [...set.listen, ...set.start, ...set.wait]) {
       const key = langRef.current + text;
       if (s.fillers.has(key)) continue;
       const url = await ttsUrl(text).catch(() => null);
@@ -234,13 +271,13 @@ export function useVoice(lang: string, onText: (text: string) => void) {
     }
   }
 
-  async function filler(kind: "start" | "wait") {
+  async function filler(kind: "listen" | "start" | "wait") {
     const s = st.current;
     const set = (FILLERS[langRef.current] ?? FILLERS.ru)[kind];
     const options = set.filter(x => x !== s.lastFiller);
     const text = options[Math.floor(Math.random() * options.length)];
     const url = s.fillers.get(langRef.current + text);
-    if (!url || !s.waiting || s.speaking) return;  // not fetched yet: stay silent rather than wait for it
+    if (!url || (kind !== "listen" && !s.waiting) || s.speaking) return;  // not fetched yet: stay silent rather than wait for it
     s.lastFiller = text;
     s.fillerPlaying = true;
     await play(url);
@@ -264,10 +301,11 @@ export function useVoice(lang: string, onText: (text: string) => void) {
     const s = st.current;
     stopSpeaking();
     clearTimeout(s.fillerTimer);
+    clearTimeout(s.awakeTimer);
     s.vad?.destroy().catch(() => {});  // never started: nothing to release
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { status, handsFree, level, error, listen, toggleHandsFree, speak, stopSpeaking, warmUp, waiting };
+  return { status, handsFree, awake, level, error, listen, toggleHandsFree, speak, stopSpeaking, warmUp, waiting };
 }
 
 export type Voice = ReturnType<typeof useVoice>;

@@ -21,14 +21,14 @@
 .progress-log{margin-top:8px;border-top:1px solid #e7ebef;padding-top:6px}
 /* Sources as picture cards + full-screen page viewer */
 .source-cards{margin-top:12px;border-top:1px solid #e7ebef;padding-top:10px}
-.source-cards-title{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#477fa8;margin-bottom:8px}
+.source-cards-title{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700;color:#477fa8;margin-bottom:8px}
 .source-strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x mandatory}
-.source-card{flex:0 0 172px;scroll-snap-align:start;background:#fff;border:1px solid #e1e6ea;border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.source-card{flex:0 0 min(210px,72%);scroll-snap-align:start;background:#fff;border:1px solid #e1e6ea;border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
 .source-thumb{all:unset;cursor:pointer;position:relative;display:block;height:120px;background:#f4f6f8}
 .source-thumb img{width:100%;height:100%;object-fit:contain;display:block}
 .source-page{position:absolute;right:6px;bottom:6px;background:#172b3acc;color:#fff;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px}
-.source-meta{padding:8px;display:grid;gap:6px;font-size:11px}.source-meta b{font-size:11px;line-height:1.3}
-.source-buttons{display:flex;gap:6px}.source-buttons button{flex:1;min-height:36px;border:1px solid #dfe5e9;background:#fafbfc;border-radius:7px;font-size:11px;font-weight:650;color:#34424d}
+.source-meta{padding:10px;display:grid;gap:8px;font-size:13px}.source-meta b{font-size:13px;line-height:1.3}
+.source-buttons{display:grid;gap:8px}.source-buttons button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:1px solid #c9dcec;background:#eaf2f8;border-radius:10px;font-size:15px;font-weight:700;color:#2f6690}.source-buttons button[aria-pressed=true]{background:#2f6690;border-color:#2f6690;color:#fff}.source-card.open{border-color:#2f6690}
 .source-card blockquote{margin:0 8px 8px;padding:8px;background:#f6f8fa;border-left:3px solid #c9d5de;font-size:11px;white-space:pre-wrap;max-height:200px;overflow:auto}
 .cite-chip{display:inline-flex;align-items:center;gap:3px;border:1px solid #c9dcec;background:#eaf2f8;color:#2f6690;border-radius:6px;padding:1px 6px;margin:0 2px;font-size:11px;font-weight:650;cursor:pointer;vertical-align:baseline}
 .viewer{position:fixed;inset:0;background:#0b141bcc;z-index:50;display:flex;justify-content:center;overflow:auto;padding:12px}
@@ -380,3 +380,4 @@
   .wizard.has-chat{grid-template-columns:minmax(0,1.25fr) minmax(560px,1fr)}
   .wizard.has-chat .chat-bubble,.wizard.has-chat .md-step-text,.wizard.has-chat .chat-composer input{font-size:18px}
 }
+.source-quote{margin-top:8px;padding:12px 14px;border:1px solid #c9dcec;border-radius:12px;background:#fff;display:grid;gap:10px}.source-quote-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.source-quote-head b{font-size:14px;color:#2f6690}.source-quote-head button{all:unset;cursor:pointer;width:40px;height:40px;display:grid;place-items:center;border-radius:10px;color:#52616c}.source-quote blockquote{margin:0;padding:10px 12px;background:#f6f8fa;border-left:4px solid #c9d5de;border-radius:6px;white-space:pre-wrap;font-size:16px;line-height:1.55;color:#2c3a44;max-height:50vh;overflow:auto}.source-quote-open{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border:0;border-radius:10px;background:#2f6690;color:#fff;font-size:16px;font-weight:700}

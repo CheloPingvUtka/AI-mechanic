@@ -224,7 +224,6 @@ const uz = {
   voice: {
     mode: "Ovozli rejim",
     modeOff: "O‘chirilgan. Qo‘l tegizmasdan gapirish uchun yoqing",
-    modeOn: "Yoqilgan: tugmasiz tinglayman va javoblarni ovoz chiqarib o‘qiyman",
     handsFreeOff: "Qo‘lsiz rejim",
     handsFreeOn: "Qo‘lsiz rejim: yoqilgan",
     hint: "«keyingi», «tayyor», «takrorla», o‘lchov raqami yoki savol",
@@ -237,6 +236,9 @@ const uz = {
     speakNow: "Gapiring",
     speaking: "Gapiryapman…",
     tapToSpeak: "Bosing va gapiring",
+    sayWake: "«Yordamchi» deng",
+    wakeHint: "Gap boshida: «Yordamchi, keyingi», «Yordamchi, me’yor qancha?»",
+    modeOn: "Yoqilgan: «Yordamchi» deb buyruq ayting, javoblarni ovoz chiqarib o‘qiyman",
   },
   wizard: {
     aiAnswering: "Sun’iy intellekt javob bermoqda…",

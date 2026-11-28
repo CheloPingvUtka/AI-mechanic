@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookOpen, ExternalLink, FileText, Globe, X } from "lucide-react";
+import { BookOpen, ExternalLink, FileText, Globe, Quote, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, apiUrl, useLoad } from "../../lib/api";
 import type { Source } from "../../types/domain";
@@ -54,10 +54,12 @@ export function PageViewer({ page, onClose }: { page: PageRef; onClose: () => vo
 export default function SourceCards({ sources, onOpen }: { sources: Source[]; onOpen: (s: PageRef) => void }) {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<string | null>(null);
+  const key = (s: Source) => s.manual_id + s.pdf_page;
+  const shown = sources.find(s => key(s) === quote);
   return <div className="source-cards">
-    <div className="source-cards-title"><BookOpen size={14}/>{t("sources")} · {sources.length}</div>
+    <div className="source-cards-title"><BookOpen size={16}/>{t("sources")} · {sources.length}</div>
     <div className="source-strip">
-      {sources.map(s => <div key={s.manual_id + s.pdf_page} className="source-card">
+      {sources.map(s => <div key={key(s)} className={`source-card ${quote === key(s) ? "open" : ""}`}>
         <button className="source-thumb" onClick={() => onOpen(withExcerpt(s))} aria-label={`${t("openPage")} ${s.pdf_page}`}>
           <img src={thumb(s)} alt="" loading="lazy"/>
           <span className="source-page">{t("page")} {s.pdf_page}</span>
@@ -66,12 +68,19 @@ export default function SourceCards({ sources, onOpen }: { sources: Source[]; on
           <b>{s.manual}</b>
           {s.ocr && <span className="badge warning">{t("scanCheck")}</span>}
           <div className="source-buttons">
-            <button onClick={() => onOpen(withExcerpt(s))}>{t("openPage")}</button>
-            <button onClick={() => setQuote(quote === s.manual_id + s.pdf_page ? null : s.manual_id + s.pdf_page)}>{t("quote")}</button>
+            <button onClick={() => onOpen(withExcerpt(s))}><FileText size={18}/>{t("openPage")}</button>
+            <button aria-pressed={quote === key(s)} onClick={() => setQuote(quote === key(s) ? null : key(s))}>
+              <Quote size={18}/>{t("quote")}</button>
           </div>
         </div>
-        {quote === s.manual_id + s.pdf_page && <blockquote>{s.excerpt}</blockquote>}
       </div>)}
     </div>
+    {/* the quote opens below the cards at full width: readable, not squeezed into a narrow card */}
+    {shown && <div className="source-quote">
+      <div className="source-quote-head"><b>{shown.manual}, {t("page")} {shown.pdf_page}</b>
+        <button onClick={() => setQuote(null)} aria-label={t("close")}><X size={20}/></button></div>
+      <blockquote>{shown.excerpt}</blockquote>
+      <button className="source-quote-open" onClick={() => onOpen(withExcerpt(shown))}><FileText size={18}/>{t("openPage")}</button>
+    </div>}
   </div>;
 }
