@@ -86,3 +86,11 @@ def test_opening_the_same_check_again_reuses_its_work(monkeypatch):
     assert asyncio.run(plan_service.start("M333YK47", "S-0005", "ru")) == "w4"
     agent_service.CONVERSATIONS.clear()
     plan_service.WORKS.clear()
+
+
+def test_chat_sees_the_work_plan_steps():
+    plan = WorkPlan(status="ready", steps=[PlanItem(text="Прогреть двигатель и прослушать", preliminary=False, pdf_page=142),
+                                           PlanItem(text="Проверить подачу масла", preliminary=False, pdf_page=91)])
+    text = agent_service.system_prompt(vehicle(), "S-0005", plan)
+    assert "План работ во вкладке «Работа»:\n1. Прогреть двигатель и прослушать (стр. 142)\n2. Проверить подачу масла (стр. 91)" in text
+    assert "План работ во вкладке" not in agent_service.system_prompt(vehicle(), "S-0005", None)
