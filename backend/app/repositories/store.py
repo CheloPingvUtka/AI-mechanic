@@ -28,7 +28,7 @@ create table if not exists disputes(
 create index if not exists book_vehicle on book(vehicle_id, created_at);
 create index if not exists works_vehicle on works(vehicle_id, status);
 """
-BOOK_KINDS = ("diagnosis", "recheck", "fault", "defect", "repair", "recommendation", "ticket", "note")
+BOOK_KINDS = ("diagnosis", "recheck", "fault", "defect", "checks", "repair", "recommendation", "ticket", "note")
 DISPUTE_KINDS = ("unverified_numbers", "ticket_rejected", "low_confidence", "fuel_mismatch",
                  "contradiction", "photo_mismatch", "measure_skipped")
 

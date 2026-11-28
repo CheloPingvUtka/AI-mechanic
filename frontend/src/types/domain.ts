@@ -138,7 +138,7 @@ export interface WorkSnapshot {
     contradictions?: Conflict[] }[];
 }
 
-export type BookKind = "diagnosis" | "recheck" | "ticket" | "defect" | "repair" | "recommendation" | "note";
+export type BookKind = "diagnosis" | "recheck" | "ticket" | "defect" | "checks" | "repair" | "recommendation" | "note";
 
 export interface BookEntry {
   id: number | null;  // null for checks taken from the fleet history

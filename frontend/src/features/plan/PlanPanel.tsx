@@ -146,7 +146,7 @@ export default function PlanPanel({ p, onOpen, onReport }: {
   const plan = p.plan;
   return <section className="panel plan-panel">
     <div className="panel-heading">
-      <div><p className="eyebrow">{t("plan.eyebrow", "РАБОЧИЙ ПЛАН")}</p><h2>{t("plan.title", "Что подготовить и что делать")}</h2></div>
+      <div><p className="eyebrow">{t("plan.eyebrow", "ПЛАН ДИАГНОСТИКИ")}</p><h2>{t("plan.title", "Что подготовить и что проверить")}</h2></div>
       <PlanStatus plan={plan}/>
     </div>
     {plan.status === "building" && <div className="plan-live"><LiveProgress events={p.events} onOpen={onOpen}/></div>}

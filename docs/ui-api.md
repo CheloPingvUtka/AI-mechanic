@@ -2,19 +2,21 @@
 
 Все пути — под `/api/v1`. Фото отправляются как `data:image/jpeg;base64,…` (сжатые на устройстве, `shrinkPhoto` в `lib/api.ts`).
 
-## Ремонтные сессии (сохраняются, можно продолжить)
+## Работы по проверке (сохраняются, можно продолжить)
+
+План — только диагностика: шаги проверки по руководству (осмотр, замеры, проверка работы). Ремонт в шаги не входит: он делается по заявке на дефектовку, в плане он только рекомендация (`aftercare`).
 
 `work_id` = `conversation_id` чата: план и чат одной проверки — одна сессия.
 
 | Метод | Путь | Что делает |
 |---|---|---|
-| POST | `/work` `{vehicle_id, session_id, lang}` | начать работу по проверке → `{work_id}`; план строится в фоне. Если по этой проверке уже есть незавершённая работа на том же языке — возвращается она (повторно не платим) |
+| POST | `/work` `{vehicle_id, session_id, lang}` | начать работу по проверке → `{work_id}`; план строится в фоне. Если по этой проверке уже есть незавершённая работа на том же языке с планом по текущим правилам — возвращается она (повторно не платим) |
 | POST | `/work/{id}/rebuild` | собрать план заново, если `plan.status = failed` (старые отметки сбрасываются) |
 | GET | `/work?status=active[&vehicle_id=]` | незавершённые работы: `[{id, vehicle_id, session_id, status, lang, created_at, updated_at, diagnosis, steps_total, steps_done, stage}]` |
 | GET | `/work/{id}` | всё, чтобы продолжить: `{work_id, vehicle_id, session_id, status, lang, plan, progress, diagnosis, chat, created_at, updated_at}` |
 | GET | `/work/{id}/stream` | SSE: `plan` (снимок), `thinking`/`tool`/`tool_result`, `done` |
 | PUT | `/work/{id}/progress` | сохранить прогресс механика (см. ниже); вызывать при каждом изменении (с задержкой ~1 с) |
-| POST | `/work/{id}/finish` | завершить: в сервисную книжку пишутся дефектовка (замеры против нормы), выполненные работы с чек-листом, рекомендации → `{entries: [id…]}` |
+| POST | `/work/{id}/finish` | завершить диагностику: в сервисную книжку пишутся замеры против нормы, выполненные проверки с чек-листом, рекомендации → `{entries: [id…]}` |
 
 `progress`: `{"steps": {"<step id>": {"done": true, "value": "4.5"}}, "checks": {"<item id>": true}, "stage": "prep"|"work"|"check"|"after"}`. `checks` — галочки в списках подготовки (tools, materials, safety, disassembly, prep) и проверки качества (quality).
 
@@ -24,9 +26,9 @@
 
 ```
 tools, materials, safety, disassembly, prep   — этап 1 «Подготовка»
-steps                                          — этап 2 «Работа»
-quality                                        — этап 3 «Проверка» (чек-лист)
-aftercare                                      — «После ремонта» (рекомендации)
+steps                                          — этап 2 «Шаги»: только проверки, без ремонта
+quality                                        — этап 3 «Проверка» (чек-лист после диагностики)
+aftercare                                      — «После диагностики» (рекомендации: какой ремонт указать в заявке, за чем следить)
 conflicts: [{note, sides: [{manual_id, manual, pdf_page, quote}], official: [{manual, url}]}]
 status: building | ready | failed, note, note_code, version
 (failed — в т.ч. если сервер перезапустили во время сборки; тогда показать «Собрать заново»)
@@ -43,7 +45,7 @@ status: building | ready | failed, note, note_code, version
 | GET | `/photos/{photo_id}` | файл фото |
 
 Запись: `{id, vehicle_id, work_id, session_id, created_at (unix, сек), kind, title, text, data, photos: [photo_id…], source?}`.
-`kind`: `diagnosis` (проверка; `source: "history"` — из истории парка), `recheck` (проверка после ремонта), `ticket` (заявка, `data` — заявка), `defect` (дефектовка: `data.steps[] = {n, text, done, value, measure, ok, manual, pdf_page}`), `repair` (выполненные работы, `data.quality[] = {text, ok}`), `recommendation` (после ремонта, `data.items[]` — пункты плана), `note`.
+`kind`: `diagnosis` (проверка; `source: "history"` — из истории парка), `recheck` (повторная проверка — после заявки на дефектовку), `ticket` (заявка, `data` — заявка), `defect` (замеры диагностики: `data.steps[] = {n, text, done, value, measure, ok, manual, pdf_page}`), `checks` (выполненные проверки, `data.quality[] = {text, ok}`; в старых записях — `repair`), `recommendation` (после диагностики, `data.items[]` — пункты плана), `note`.
 
 ## Журнал спорных ситуаций
 

@@ -181,7 +181,7 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
     onClick: () => void s.createTicket(confirm) } : null;
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState("");
-  const finishWork: Action = { label: t("work.finish", "Завершить ремонт"), icon: <ClipboardCheck size={24}/>, wait: finishing,
+  const finishWork: Action = { label: t("work.finish", "Завершить диагностику"), icon: <ClipboardCheck size={24}/>, wait: finishing,
     onClick: () => { setFinishing(true); setFinishError(""); plan.finish().catch(e => setFinishError((e as Error).message)).finally(() => setFinishing(false)); } };
   const workPrimary: Action | null = !s.workId ? (s.loading ? null : { label: t("getResult", "Получить результат диагностики"), onClick: () => go("result") })
     : plan.finished ? (ticketAction ? toTicket : otherVehicle)
@@ -194,11 +194,11 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
         ? { label: t("work.skipNext", "Без замера — дальше"), onClick: finishStep, icon: <AlertTriangle size={22}/> }
         : { label: lastStep ? t("work.doneLast", "Сделано, к проверке") : t("work.doneNext", "Сделано, дальше"), onClick: finishStep, icon: <Check size={24}/> })
       : { label: lastStep ? t("work.toCheck", "К проверке") : t("wizard.next", "Дальше"), onClick: workNext })
-    : phase === "check" && aftercare.length ? { label: t("work.toAfter", "После ремонта"), onClick: workNext }
+    : phase === "check" && aftercare.length ? { label: t("work.toAfter", "После диагностики"), onClick: workNext }
     : finishWork;
   const getResult: Action = s.loading ? { label: t("gettingResult", "Получаем результат…"), wait: true }
     : { label: t("getResult", "Получить результат диагностики"), onClick: diagnose, icon: <Stethoscope size={22}/> };
-  const primary: Action | null = screen === "result" ? (s.result ? (s.workId ? { label: t("wizard.toWork", "Что делать — по шагам"), onClick: () => go("work"), icon: <Wrench size={22}/> } : otherVehicle)
+  const primary: Action | null = screen === "result" ? (s.result ? (s.workId ? { label: t("wizard.toWork", "Что проверить — по шагам"), onClick: () => go("work"), icon: <Wrench size={22}/> } : otherVehicle)
       : getResult)
     : screen === "work" ? workPrimary
     : screen === "ticket" ? (s.ticket ? otherVehicle : !s.result ? { label: t("getResult", "Получить результат диагностики"), onClick: () => go("result") } : ticketAction ?? otherVehicle)
@@ -313,11 +313,11 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
   const quality = plan.quality ?? [];
   const aftercare = plan.aftercare ?? [];
   const afterList = <CheckList p={p} onOpen={onOpen}
-    sections={[{ key: "aftercare", title: t("plan.aftercare", "После ремонта"), icon: <CalendarClock size={18}/>, items: aftercare }]}/>;
+    sections={[{ key: "aftercare", title: t("plan.aftercare", "После диагностики"), icon: <CalendarClock size={18}/>, items: aftercare }]}/>;
 
   if (p.finished) return <>
     <div className="work-done"><CheckCircle2 size={56}/>
-      <b>{t("work.finished", "Ремонт записан в сервисную книжку")}</b>
+      <b>{t("work.finished", "Диагностика записана в сервисную книжку")}</b>
       <Link className="button button-light" to={`/book/${vehicleId}`}><BookOpen size={22}/>{t("book.open", "Открыть сервисную книжку")}</Link>
     </div>
     {focus && <Conflicts items={plan.conflicts} onOpen={onOpen} focus={focus}/>}
@@ -396,7 +396,7 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
         <p>{allDone ? t("work.summaryAll", "Все шаги сделаны.") : t("work.summaryLeft", "Нажмите на шаг, чтобы доделать.")}</p>
       </div></div>}
       <CheckList p={p} onOpen={onOpen} checkable
-        sections={[{ key: "quality", title: t("plan.quality", "Проверьте после ремонта"), icon: <ShieldCheck size={18}/>, items: quality }]}/>
+        sections={[{ key: "quality", title: t("plan.quality", "Проверьте после диагностики"), icon: <ShieldCheck size={18}/>, items: quality }]}/>
       {steps.length > 0 && <ol className="summary-list">{steps.map((x, i) => {
         const st = p.stepState(x.id);
         const ok = inNorm(x, st.value);
@@ -411,12 +411,12 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
     {phase === "after" && <>
       {allDone && checked === quality.length
         ? <div className="work-status ready"><CheckCircle2 size={28}/><div>
-            <b>{t("work.afterTitle", "Почти готово")}</b><p>{t("work.afterHint", "Запомните, за чем следить, и жмите «Завершить ремонт».")}</p>
+            <b>{t("work.afterTitle", "Почти готово")}</b><p>{t("work.afterHint", "Запомните рекомендации и жмите «Завершить диагностику».")}</p>
           </div></div>
         : <div className="work-status warn"><AlertTriangle size={28}/><div>
             <b>{t("work.afterLeft", "Не всё отмечено: шаги {{n}} из {{total}}, проверка {{q}} из {{qt}}", { n: p.doneCount, total: steps.length, q: checked, qt: quality.length })}</b>
             {p.skippedCount > 0 && <p><b>{t("work.skippedN", "Пропущено замеров: {{n}} — это будет записано в сервисную книжку", { n: p.skippedCount })}</b></p>}
-            <p>{t("work.afterLeftHint", "Вернитесь и отметьте, или завершите ремонт так.")}</p>
+            <p>{t("work.afterLeftHint", "Вернитесь и отметьте, или завершите диагностику так.")}</p>
           </div></div>}
       {afterList}
     </>}

@@ -38,11 +38,11 @@ def test_conversation_survives_restart(monkeypatch):
     agent_service.CONVERSATIONS.clear()
 
 
-def test_finish_writes_defect_repair_and_aftercare(monkeypatch):
+def test_finish_writes_measures_checks_and_recommendations(monkeypatch):
     monkeypatch.setattr(plan_service, "JsonVehicleCatalog", FakeCatalog)
     state = agent_service.AgentState(vehicle=vehicle(), session_id="S-0005", diagnosis=make_result(),
                                      conversation_id="w2")
-    step = PlanItem(text="Замерить момент", preliminary=False, measure=Measure(name="Момент", unit="Н·м", min=421, max=461))
+    step = PlanItem(text="Замерить зазор", preliminary=False, measure=Measure(name="Момент", unit="Н·м", min=421, max=461))
     state.plan = WorkPlan(steps=[step], aftercare=[PlanItem(text="Через неделю проверить течи", preliminary=True)])
     conv = agent_service.Conversation(state=state)
     agent_service.save_conversation("w2", conv, status="active")
@@ -52,7 +52,7 @@ def test_finish_writes_defect_repair_and_aftercare(monkeypatch):
 
     plan_service.finish("w2")
     kinds = {e["kind"]: e for e in store.entries("M333YK47")}
-    assert set(kinds) == {"defect", "repair", "recommendation"}
+    assert set(kinds) == {"defect", "checks", "recommendation"}
     assert kinds["defect"]["data"]["steps"][0]["ok"] is False  # 400 is below 421
     assert store.load_work("w2")["status"] == "done"
     agent_service.CONVERSATIONS.clear()
@@ -79,7 +79,8 @@ def test_opening_the_same_check_again_reuses_its_work(monkeypatch):
     monkeypatch.setattr(plan_service, "JsonVehicleCatalog", FakeCatalog)
     state = agent_service.AgentState(vehicle=vehicle(), session_id="S-0005", conversation_id="w4")
     state.plan = WorkPlan(status="ready", steps=[PlanItem(text="Шаг", preliminary=False)])
-    agent_service.save_conversation("w4", agent_service.Conversation(state=state), status="active")
+    agent_service.save_conversation("w4", agent_service.Conversation(state=state), status="active",
+                                    rules=plan_service.PLAN_RULES)
     agent_service.CONVERSATIONS.clear()
     plan_service.WORKS.clear()
 
@@ -92,8 +93,8 @@ def test_chat_sees_the_work_plan_steps():
     plan = WorkPlan(status="ready", steps=[PlanItem(text="Прогреть двигатель и прослушать", preliminary=False, pdf_page=142),
                                            PlanItem(text="Проверить подачу масла", preliminary=False, pdf_page=91)])
     text = agent_service.system_prompt(vehicle(), "S-0005", plan)
-    assert "План работ во вкладке «Работа»:\n1. Прогреть двигатель и прослушать (стр. 142)\n2. Проверить подачу масла (стр. 91)" in text
-    assert "План работ во вкладке" not in agent_service.system_prompt(vehicle(), "S-0005", None)
+    assert "План диагностики во вкладке «Работа»:\n1. Прогреть двигатель и прослушать (стр. 142)\n2. Проверить подачу масла (стр. 91)" in text
+    assert "План диагностики во вкладке" not in agent_service.system_prompt(vehicle(), "S-0005", None)
 
 
 def test_disputes_carry_their_check_and_work():

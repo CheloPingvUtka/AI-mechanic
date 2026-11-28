@@ -34,12 +34,12 @@ class Progress(BaseModel):
     stage: Literal["prep", "work", "check", "after"] | None = None
 
 
-@router.get("", summary="Сохранённые ремонтные сессии (status=active — незавершённые)")
+@router.get("", summary="Сохранённые работы по проверке (status=active — незавершённые)")
 def list_works(vehicle_id: str | None = None, status: Literal["active", "done", "chat"] | None = None):
     return store.list_works(vehicle_id, status)
 
 
-@router.get("/{work_id}", summary="Ремонтная сессия целиком: план, отметки, чат — чтобы продолжить")
+@router.get("/{work_id}", summary="Работа целиком: план диагностики, отметки, чат — чтобы продолжить")
 def get_work(work_id: str):
     work = plan_service.get_work(work_id)
     saved = store.load_work(work_id)
@@ -63,7 +63,7 @@ def save_progress(work_id: str, payload: Progress):
     return {"ok": True}
 
 
-@router.post("/{work_id}/finish", summary="Завершить ремонт: дефектовка, работы и рекомендации — в сервисную книжку")
+@router.post("/{work_id}/finish", summary="Завершить диагностику: замеры, проверки и рекомендации — в сервисную книжку")
 def finish_work(work_id: str):
     try:
         return {"entries": plan_service.finish(work_id)}

@@ -70,7 +70,7 @@ export function usePlan(workId: string | null) {
     return () => clearTimeout(timer);
   }, [steps, stage]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Ends the repair: the server writes defects, done work and recommendations into the service book. */
+  /** Ends the diagnosis: the server writes measurements, done checks and recommendations into the service book. */
   async function finish() {
     if (!workId) return;
     await save();

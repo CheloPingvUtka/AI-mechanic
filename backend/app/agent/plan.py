@@ -1,7 +1,8 @@
-"""Work plan for one check, filled in the background, in three stages:
-1. Подготовка: tools, materials, safety, what to remove (disassembly), preparing the vehicle and bay (prep);
-2. Работа: steps from the manual;
-3. Проверка: quality checklist after the repair; then aftercare recommendations.
+"""Diagnosis plan for one check, filled in the background, in three stages (repair is not in it: it goes to
+the defect ticket and appears here only as a recommendation):
+1. Подготовка: tools, materials, safety, what to remove to reach the unit (disassembly), preparing the vehicle and bay (prep);
+2. Шаги: checks from the manual (inspect, measure against the norm, test);
+3. Проверка: checklist after the diagnosis; then recommendations (aftercare): repair to order, what to watch.
 
 Preliminary items (the model's engineering experience, shown as such) may not contain numbers.
 Confirmed items and every step need a verbatim quote from a retrieved fragment; numbers in their
@@ -79,13 +80,15 @@ UPDATE_PLAN = {
     "function": {
         "name": "update_plan",
         "description": (
-            "Добавить или заменить пункты рабочего плана механика. Этап 1 «Подготовка»: tools — инструмент и "
-            "приспособления; materials — запчасти и расходники; safety — меры безопасности; disassembly — что снять "
-            "или разобрать, чтобы добраться до узла; prep — подготовка машины и рабочего места, по порядку. Этап 2 "
-            "«Работа»: steps — шаги проверки/ремонта по порядку. Этап 3 «Проверка»: quality — контрольный список "
-            "после ремонта (работы выполнены, детали установлены правильно, крепления проверены, нет посторонних "
-            "предметов, двигатель готов к запуску). После: aftercare — что контролировать после ремонта, признаки "
-            "неудачного ремонта, через какой пробег перепроверить, профилактика. preliminary=true — по инженерному "
+            "Добавить или заменить пункты плана диагностики. Этап 1 «Подготовка»: tools — инструмент и "
+            "приспособления; materials — расходники, нужные для проверки; safety — меры безопасности; disassembly — "
+            "что снять, чтобы добраться до узла для проверки; prep — подготовка машины и рабочего места, по порядку. "
+            "Этап 2 «Шаги»: steps — шаги проверки по порядку: осмотр, замер с нормой, проверка работы; без "
+            "регулировки, замены и ремонта. Этап 3 «Проверка»: quality — контрольный список после диагностики "
+            "(проверки выполнены, снятое установлено правильно, крепления проверены, нет посторонних предметов, "
+            "двигатель готов к пуску). После: aftercare — рекомендации после диагностики: какой ремонт или "
+            "регулировку указать в заявке на дефектовку, можно ли ездить до ремонта, за чем следить, когда "
+            "перепроверить. preliminary=true — по инженерному "
             "опыту: без ref и без чисел. preliminary=false — из руководства: ref и дословная quote из найденного "
             "фрагмента; числа в тексте и границы measure — только из этого фрагмента. steps всегда "
             "preliminary=false. replace=true заменяет весь раздел."

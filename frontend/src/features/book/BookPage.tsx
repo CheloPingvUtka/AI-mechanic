@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, BookOpen, Camera, Check, CheckCircle2, ClipboardList, Gauge, Lightbulb, Loader2, Plus, RotateCcw, Stethoscope, StickyNote, Wrench, X, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpen, Camera, Check, CheckCircle2, ClipboardCheck, ClipboardList, Gauge, Lightbulb, Loader2, Plus, RotateCcw, Stethoscope, StickyNote, Wrench, X, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, photoUrl, shrinkPhoto, useLoad } from "../../lib/api";
 import type { BookEntry, BookKind } from "../../types/domain";
@@ -13,7 +13,7 @@ type Row = { text: string; done?: boolean; skipped?: boolean; value?: string | n
 
 const ICONS: Record<BookKind, ReactNode> = {
   diagnosis: <Stethoscope size={24}/>, recheck: <RotateCcw size={24}/>, ticket: <ClipboardList size={24}/>, defect: <Gauge size={24}/>,
-  repair: <Wrench size={24}/>, recommendation: <Lightbulb size={24}/>, note: <StickyNote size={24}/>,
+  checks: <ClipboardCheck size={24}/>, repair: <Wrench size={24}/>, recommendation: <Lightbulb size={24}/>, note: <StickyNote size={24}/>,
 };
 
 /** Colour = meaning: green ok, yellow attention, red out of norm, blue advice, grey note. */
@@ -21,7 +21,7 @@ function tone(e: BookEntry): string {
   const data = e.data as { status?: string; steps?: Row[] } | null;
   if (e.kind === "diagnosis" || e.kind === "recheck") return data?.status === "normal" ? "ok" : "warn";
   if (e.kind === "defect") return data?.steps?.some(s => s.ok === false) ? "bad" : "ok";
-  return { repair: "ok", ticket: "warn", recommendation: "info" }[e.kind as string] ?? "muted";
+  return { checks: "ok", repair: "ok", ticket: "warn", recommendation: "info" }[e.kind as string] ?? "muted";
 }
 
 const when = (sec: number) => new Date(sec * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -37,7 +37,7 @@ export default function BookPage() {
   const [photo, setPhoto] = useState<number | null>(null);
   const kindLabel: Record<BookKind, string> = {
     diagnosis: t("book.kind.diagnosis", "Проверка"), recheck: t("book.kind.recheck", "Проверка после ремонта"), ticket: t("book.kind.ticket", "Заявка"),
-    defect: t("book.kind.defect", "Замеры"), repair: t("book.kind.repair", "Ремонт"), recommendation: t("book.kind.recommendation", "Советы"),
+    defect: t("book.kind.defect", "Замеры"), checks: t("book.kind.checks", "Проверки"), repair: t("book.kind.repair", "Ремонт"), recommendation: t("book.kind.recommendation", "Советы"),
     note: t("book.kind.note", "Заметка"),
   };
 
@@ -76,14 +76,16 @@ export default function BookPage() {
   </div>;
 }
 
-/** Text plus what the entry carries: measurements against the norm, done work, the after-repair checklist, advice. */
+/** Text plus what the entry carries: measurements against the norm, done checks (or, in old entries, done repair work)
+ *  with the checklist after them, advice. */
 function EntryDetails({ e }: { e: BookEntry }) {
   const { t } = useTranslation();
   const data = (e.data ?? {}) as { steps?: Row[]; quality?: Row[]; items?: Row[] };
+  const done = e.kind === "checks" || e.kind === "repair";
   const steps = e.kind === "defect" ? (data.steps ?? []).filter(s => s.value || s.measure)
-    : e.kind === "repair" ? (data.steps ?? []).filter(s => s.done) : [];
-  const rows: Row[] = [...steps, ...(e.kind === "repair" ? data.quality ?? [] : []), ...(e.kind === "recommendation" ? data.items ?? [] : [])];
-  const showText = e.text && !(e.kind === "repair" && rows.length) && !(e.kind === "recommendation" && rows.length);
+    : done ? (data.steps ?? []).filter(s => s.done) : [];
+  const rows: Row[] = [...steps, ...(done ? data.quality ?? [] : []), ...(e.kind === "recommendation" ? data.items ?? [] : [])];
+  const showText = e.text && !(done && rows.length) && !(e.kind === "recommendation" && rows.length);
   return <>
     {showText && <p className="tl-text">{e.text}</p>}
     {!!rows.length && <ul className="tl-rows">{rows.map((r, i) => {

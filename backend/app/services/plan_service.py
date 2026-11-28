@@ -34,49 +34,54 @@ from app.services.agent_service import (
 
 log = logging.getLogger("uvicorn.error")
 MAX_ROUNDS = 14
-# If the model did not get to them: the stage-3 checklist the customer described, and aftercare without numbers.
+# If the model did not get to them: the stage-3 checklist after the checks, and what to do after the diagnosis (no numbers).
 FALLBACK = {
     "quality": {
-        "ru": ["Все работы по плану выполнены", "Детали и узлы установлены правильно, на свои места",
+        "ru": ["Все проверки по плану выполнены", "Всё, что снимали, установлено правильно, на свои места",
                "Все соединения и крепления проверены и затянуты", "Не осталось инструмента, ветоши и посторонних предметов",
                "Нет незакреплённых деталей, шлангов и проводов", "Двигатель готов к пуску: уровни масла и жидкости в норме"],
-        "uz": ["Rejadagi barcha ishlar bajarildi", "Detallar va uzellar to‘g‘ri, o‘z joyiga o‘rnatildi",
+        "uz": ["Rejadagi barcha tekshiruvlar bajarildi", "Yechilgan hamma narsa to‘g‘ri, o‘z joyiga o‘rnatildi",
                "Barcha ulanishlar va mahkamlashlar tekshirildi va tortildi", "Asbob, latta va begona narsalar qolmadi",
                "Mahkamlanmagan detal, shlang va simlar yo‘q", "Dvigatel ishga tayyor: moy va suyuqlik darajalari me’yorda"],
-        "ko": ["계획한 작업을 모두 마쳤다", "부품과 장치를 제자리에 바르게 달았다", "모든 연결부와 고정부를 확인하고 조였다",
+        "ko": ["계획한 점검을 모두 마쳤다", "떼어 낸 부품을 모두 제자리에 바르게 달았다", "모든 연결부와 고정부를 확인하고 조였다",
                "공구, 걸레, 이물질이 남아 있지 않다", "고정되지 않은 부품, 호스, 전선이 없다", "엔진 시동 준비 완료: 윤활유와 액체 양이 정상"],
     },
     "aftercare": {
-        "ru": ["Первые дни после ремонта слушать двигатель: стук или шум, который вернулся, — признак неудачного ремонта",
-               "Проверять, нет ли течей масла и топлива в месте работ", "Следить за давлением масла и температурой по приборам",
-               "Повторить акустическую проверку на ближайшем ТО и сравнить с результатом до ремонта"],
-        "uz": ["Ta’mirdan keyingi kunlarda dvigatelni tinglang: qaytgan taqillash yoki shovqin — ta’mir muvaffaqiyatsiz bo‘lganini bildiradi",
-               "Ish joyida moy va yoqilg‘i oqishi bor-yo‘qligini tekshiring", "Asboblar bo‘yicha moy bosimi va haroratni kuzating",
-               "Eng yaqin TXKda akustik tekshiruvni takrorlang va ta’mirdan oldingi natija bilan solishtiring"],
-        "ko": ["수리 후 며칠 동안 엔진 소리를 들어 보세요: 두드리는 소리나 소음이 다시 나면 수리가 잘못된 것입니다",
-               "작업한 곳에 윤활유나 연료가 새는지 확인하세요", "계기판으로 윤활유 압력과 온도를 지켜보세요",
-               "다음 정비 때 음향 점검을 다시 하고 수리 전 결과와 비교하세요"],
+        "ru": ["Если проверки подтвердили неисправность — создайте заявку на дефектовку: ремонт делают по ней",
+               "До ремонта следите за давлением масла и температурой по приборам",
+               "Если стук или шум усилился — машину в рейс не выпускайте, сообщите мастеру",
+               "После ремонта повторите акустическую проверку и сравните с этой"],
+        "uz": ["Tekshiruvlar nosozlikni tasdiqlasa — nosozlik arizasini tuzing: ta’mir shu ariza bo‘yicha qilinadi",
+               "Ta’mirgacha asboblar bo‘yicha moy bosimi va haroratni kuzating",
+               "Taqillash yoki shovqin kuchaysa — mashinani reysga chiqarmang, ustaga xabar bering",
+               "Ta’mirdan keyin akustik tekshiruvni takrorlang va shu natija bilan solishtiring"],
+        "ko": ["점검으로 고장이 확인되면 고장 점검 신청서를 만드세요: 수리는 그 신청서에 따라 합니다",
+               "수리 전까지 계기판으로 윤활유 압력과 온도를 지켜보세요",
+               "두드리는 소리나 소음이 커지면 차량을 운행에 내보내지 말고 정비 책임자에게 알리세요",
+               "수리 후 음향 점검을 다시 하고 이번 결과와 비교하세요"],
     },
 }
 PLAN_TOOLS = [t for t in TOOLS if t["function"]["name"] in ("search_manual", "view_page", "report_contradiction")] + [
     UPDATE_PLAN, FINISH_PLAN]
 
-PLAN_PROMPT = """Ты готовишь рабочий план для механика, который сейчас будет разбираться с неисправностью. Механик видит план сразу, пока ты работаешь, поэтому заполняй его по частям. План из трёх этапов: 1) Подготовка, 2) Работа, 3) Проверка, и после — рекомендации.
+# Plans are diagnosis only (repair goes to the defect ticket). A saved plan built under other rules is not reused.
+PLAN_RULES = "diagnosis"
+PLAN_PROMPT = """Ты готовишь план диагностики для механика: по шагам он проверит, подтверждается ли неисправность, на которую указала акустическая проверка. Ремонт в план не входит: замену, регулировку, восстановление делают по заявке на дефектовку, в плане ремонт бывает только рекомендацией после диагностики. Механик видит план сразу, пока ты работаешь, поэтому заполняй его по частям. План из трёх этапов: 1) Подготовка, 2) Шаги проверки, 3) Проверка после диагностики, и после — рекомендации.
 
 Машина: {vehicle}. Двигатель: {engine}. Доступны только руководства на этот двигатель.
 Результат проверки: {diagnosis}
 
 Порядок:
 1. Первым же ответом, одновременно: update_plan(section="tools", preliminary=true), update_plan(section="materials", preliminary=true) и update_plan(section="prep", preliminary=true) — что подготовить и как подготовить машину и рабочее место (заглушить двигатель, остудить, подставить упоры и т.п.), по инженерному опыту, коротко, без чисел; и search_manual по процедуре проверки этого узла.
-2. Найди в руководстве процедуру проверки/регулировки/ремонта именно этого узла (несколько запросов словами руководства). Оглавление и общий раздел ТО не годятся.
-3. disassembly — что снять или разобрать, чтобы добраться до узла (из руководства с ref и quote, если есть; иначе preliminary без чисел).
-4. Шаги: update_plan(section="steps", preliminary=false) с ref и дословной quote. Порядок шагов: если руководство задаёт обязательную последовательность (разборка и сборка, регулировка по порядку цилиндров, затяжка в определённом порядке, проверка после регулировки) — сохраняй её как есть. Если шаги не зависят друг от друга (например, разные проверки причины), ставь их от простого к сложному: сначала осмотр и проверки без разборки и без инструмента, потом замеры инструментом, потом то, что требует снятия деталей, разборка и замена — в конце. Если в шаге есть замер с нормой из фрагмента — укажи measure (name, unit, min/max). Шаги добавляй партиями по мере нахождения, не жди конца. Сразу после первой партии шагов — quality и aftercare (п. 6–7), потом уточняй. Если пункт отклонён — исправь один раз или пропусти, не повторяй.
+2. Найди в руководстве, как проверить именно этот узел: осмотр, замеры, проверка зазоров, давления, компрессии, герметичности, работы узла (несколько запросов словами руководства). Оглавление и общий раздел ТО не годятся.
+3. disassembly — что снять, чтобы добраться до узла для осмотра или замера, и только это (из руководства с ref и quote, если есть; иначе preliminary без чисел).
+4. Шаги: update_plan(section="steps", preliminary=false) с ref и дословной quote. Шаги — только диагностика: осмотреть, измерить и сравнить с нормой, проверить работу. Регулировку, замену, ремонт и восстановление в шаги не ставь: если процедура руководства совмещает проверку и регулировку, возьми только проверку (замер и норму), а регулировку — в aftercare как рекомендацию. Снять деталь, чтобы осмотреть или измерить, можно; поставить её на место — в quality. Порядок шагов: если руководство задаёт обязательную последовательность (проверка по порядку работы цилиндров, при определённом положении коленчатого вала, снятие перед осмотром) — сохраняй её как есть. Если шаги не зависят друг от друга (например, разные проверки причины), ставь их от простого к сложному: сначала осмотр и проверки без разборки и без инструмента, потом замеры инструментом, проверки со снятием деталей — в конце. Если в шаге есть замер с нормой из фрагмента — укажи measure (name, unit, min/max). Шаги добавляй партиями по мере нахождения, не жди конца. Сразу после первой партии шагов — quality и aftercare (п. 6–7), потом уточняй. Если пункт отклонён — исправь один раз или пропусти, не повторяй.
 5. Если руководство называет конкретный инструмент, приспособления, запчасти или меры безопасности — добавь их с preliminary=false (ref, quote); если это уточняет предварительный список, замени раздел (replace=true).
-6. quality — контрольный список проверки после работ: все работы выполнены, детали и узлы установлены правильно, соединения и крепления проверены (моменты затяжки — только из руководства), не осталось посторонних предметов, двигатель готов к запуску. Пункты из руководства — с ref; общие — preliminary без чисел.
-7. aftercare — рекомендации после ремонта: на какие узлы и параметры смотреть, признаки неудачного ремонта или повторной неисправности, что контролировать в первую очередь, через какой пробег перепроверить, профилактика. Пробег, интервалы и нормы — только из руководства (ищи обкатку, ТО, периодичность) с ref; если в руководстве нет — пиши без чисел, preliminary.
+6. quality — контрольный список после диагностики: все проверки выполнены, всё, что снимали, установлено на место правильно, соединения и крепления затянуты (моменты затяжки — только из руководства), не осталось посторонних предметов, двигатель готов к пуску. Пункты из руководства — с ref; общие — preliminary без чисел.
+7. aftercare — рекомендации после диагностики, для заявки на дефектовку: какой ремонт или регулировка понадобятся, если проверки подтвердят неисправность (по пункту на каждый, рекомендацией, без шагов; со ссылкой на процедуру в руководстве — ref и quote, если нашёл); можно ли ездить до ремонта (запрет — только если руководство прямо это говорит, с ref); за чем следить до ремонта; повторить акустическую проверку после ремонта. Нормы и интервалы — только из руководства с ref; если в руководстве нет — пиши без чисел, preliminary.
 8. Чтобы шаг был нагляднее, можешь открыть страницу через view_page и убедиться, что на ней есть рисунок этого узла.
 8а. Если фрагменты руководств расходятся (разные нормы или порядок для одного и того же) — report_contradiction с цитатами обеих сторон и severity. Важность: critical — если расхождение меняет то, что делает механик (нормы отличаются больше чем на 5 %, другой порядок работ, одно руководство запрещает или требует то, чего нет в другом); minor — если по сути одно и то же (та же норма в других единицах или округлённая при пересчёте: 5,6…6,2 кгс·м = 54,9…58,8 и 54,9…60,8 Н·м — это не противоречие; разные формулировки). Для critical в этом шаге напиши «есть расхождение в руководствах — см. предупреждение» и в report_contradiction дай recommendation — чего придерживаться и почему (это покажется механику как рекомендация, не из руководства); другие шаги этим не помечай. Для minor шаг пиши как обычно.
-9. В конце — finish_plan с короткой запиской. Если процедуры для этого узла в руководстве на этот двигатель нет, шаги не придумывай: finish_plan и объясни это.
+9. В конце — finish_plan с короткой запиской. Если проверки этого узла в руководстве на этот двигатель нет, шаги не придумывай: finish_plan и объясни это.
 Тексты пунктов пиши коротко и простыми словами: механик читает с телефона. {lang_rule} Поле quote — всегда дословно из фрагмента, по-русски."""
 
 
@@ -136,14 +141,14 @@ async def rebuild(work_id: str) -> None:
         return
     work.plan = work.state.plan = WorkPlan()
     work.log, work.cost_usd, work.last_tokens = [], 0.0, None
-    store.update_work_data(work_id, progress={})
+    store.update_work_data(work_id, progress={}, rules=PLAN_RULES)
     work.emit_plan()
     work.task = asyncio.create_task(_build(work))
 
 
 def book_check(d, verdict: dict, vehicle_id: str, work_id: str) -> None:
-    """Put the check into the service book once; after a repair it is a re-check."""
-    kind = "recheck" if store.entries(vehicle_id, "repair") else "diagnosis"
+    """Put the check into the service book once; once a repair was ordered (a defect ticket), it is a re-check."""
+    kind = "recheck" if store.entries(vehicle_id, "ticket") or store.entries(vehicle_id, "repair") else "diagnosis"
     if store.has_entry(vehicle_id, kind, d.session_id):
         return
     title = (f"{d.anomaly_type} {d.anomaly_title}" if d.status == "anomaly"
@@ -156,7 +161,11 @@ async def start(vehicle_id: str, session_id: str, lang: str = "ru") -> str:
     """Creates (or reuses) the conversation for this check and starts building its plan.
     An unfinished work for the same check and language is reused: opening the check again costs nothing."""
     for saved in store.list_works(vehicle_id, "active"):
-        work = get_work(saved["id"]) if saved["session_id"] == session_id and saved["lang"] == lang else None
+        if saved["session_id"] != session_id or saved["lang"] != lang:
+            continue
+        if ((store.load_work(saved["id"]) or {}).get("data") or {}).get("rules") != PLAN_RULES:
+            continue  # built before plans became diagnosis only: a new one is built
+        work = get_work(saved["id"])
         if work and work.plan.status != "failed":
             return work.conv_id
     service = AgentService()
@@ -167,7 +176,7 @@ async def start(vehicle_id: str, session_id: str, lang: str = "ru") -> str:
     plan = WorkPlan()
     conv.state.plan = plan
     work = WORKS[conv_id] = Work(conv_id=conv_id, conv=conv, state=conv.state, plan=plan, lang=lang)
-    save_conversation(conv_id, conv, status="active")
+    save_conversation(conv_id, conv, status="active", rules=PLAN_RULES)
     work.task = asyncio.create_task(_build(work))
     return conv_id
 
@@ -299,7 +308,7 @@ def in_norm(measure: dict | None, value: str) -> bool | None:
 
 
 def finish(work_id: str) -> list[int]:
-    """Closes a repair: what was checked and measured, what was done, and aftercare go into the book."""
+    """Closes a diagnosis: what was measured, which checks were done, and the recommendations go into the book."""
     work = get_work(work_id)
     if work is None:
         raise LookupError(f"Нет работы {work_id}")
@@ -321,7 +330,7 @@ def finish(work_id: str) -> list[int]:
     measured = [r for r in rows if r["value"]]
     bad = [r for r in measured if r["ok"] is False]
     skipped = [r for r in rows if r["skipped"]]
-    ids.append(store.add_entry(vid, "defect", f"Дефектовка: {fault}",
+    ids.append(store.add_entry(vid, "defect", f"Диагностика: {fault}",
                                f"Замеров: {len(measured)}, вне нормы: {len(bad)}"
                                + (f", пропущено: {len(skipped)}" if skipped else ""), {"steps": rows},
                                work_id=work_id, session_id=work.state.session_id))
@@ -331,12 +340,12 @@ def finish(work_id: str) -> list[int]:
             vid, work_id, {"steps": skipped})
     done = [r["text"] for r in rows if r["done"]]
     if done:
-        ids.append(store.add_entry(vid, "repair", "Выполненные работы", "\n".join(done),
+        ids.append(store.add_entry(vid, "checks", "Выполненные проверки", "\n".join(done),
                                    {"steps": [r for r in rows if r["done"]],
                                     "quality": [{"text": q.text, "ok": bool(checks.get(str(q.id)))} for q in plan.quality]},
                                    work_id=work_id, session_id=work.state.session_id))
     if plan.aftercare:
-        ids.append(store.add_entry(vid, "recommendation", "Рекомендации после ремонта",
+        ids.append(store.add_entry(vid, "recommendation", "Рекомендации после диагностики",
                                    "\n".join(a.text for a in plan.aftercare),
                                    {"items": [asdict(a) for a in plan.aftercare]},
                                    work_id=work_id, session_id=work.state.session_id))
