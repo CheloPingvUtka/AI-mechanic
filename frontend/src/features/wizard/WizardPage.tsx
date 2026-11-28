@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, CalendarClock, Check, CheckCircle2, Circle, ClipboardCheck, ClipboardList, ClipboardPlus, ListChecks, Loader2, MessageCircle, RefreshCw, ShieldCheck, Stethoscope, Truck, Volume2, VolumeX, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, CalendarClock, Check, CheckCircle2, Circle, ClipboardCheck, ClipboardList, ClipboardPlus, ListChecks, Loader2, MessageCircle, RefreshCw, Lightbulb, Scale, ShieldCheck, Stethoscope, Truck, Volume2, VolumeX, Wrench, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, formatDate, useLoad, vehicleName } from "../../lib/api";
-import type { Session, Stage } from "../../types/domain";
+import type { Dispute, Session, Stage } from "../../types/domain";
 import { PageViewer, type PageRef } from "../../components/ui/SourceCards";
 import Conflicts, { concerns } from "../../components/ui/Conflicts";
 import VehiclePicker from "./VehiclePicker";
@@ -42,6 +42,8 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   const vehicle = fleet?.find(v => v.vehicle_id === params.get("vehicle"));
   const screen: Screen = (params.get("step") as Screen) ?? (vehicle ? "result" : "vehicle");
   const workParam = params.get("work");  // a saved repair to resume
+  // opened from the disputes journal: the check to select, the chat to open, the conflict to show
+  const sessionParam = params.get("session"), chatParam = params.get("chat"), disputeParam = params.get("dispute");
   const s = useCheckSession(vehicle);
   // The open repair stays in the address, so a reload or a resume card comes back to it.
   const go = (next: Screen, vehicleId = vehicle?.vehicle_id) =>
@@ -68,6 +70,20 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   useEffect(() => {
     if (vehicle && workParam && workParam !== s.workId) void s.resume(workParam);
   }, [vehicle?.vehicle_id, workParam]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (vehicle && !workParam && sessionParam && vehicle.sessions.some(x => x.session_id === sessionParam)) s.selectSession(sessionParam);
+  }, [vehicle?.vehicle_id, sessionParam]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (chatParam && vehicle) setChatOpen(true); }, [chatParam, vehicle?.vehicle_id]);
+  const [dispute, setDispute] = useState<Dispute | null>(null);
+  useEffect(() => {
+    setDispute(null);
+    if (disputeParam) void api.disputes().then(list => setDispute(list.find(d => String(d.id) === disputeParam) ?? null)).catch(() => {});
+  }, [disputeParam]);
+  const focusNote = dispute?.kind === "contradiction" ? dispute.detail : null;
+  // a conflict found in a chat answer (not in the plan) is shown in the chat
+  useEffect(() => {
+    if (focusNote && plan.loaded && plan.plan && !plan.plan.conflicts?.some(c => c.note === focusNote)) setChatOpen(true);
+  }, [focusNote, plan.loaded, !!plan.plan]);  // eslint-disable-line react-hooks/exhaustive-deps
   // The check result comes when the mechanic asks for it (after the recording on the stand), never by itself.
   const diagnose = () => void s.runDiagnosis().then(r => { if (r && speakOn) void voice.speak(verdictLine(t, r)); });
   // Open the first step not done yet (a resumed repair continues where it stopped).
@@ -208,6 +224,7 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
       </div>}
 
       <main className={`wizard-body screen-${screen}`}>
+        {dispute && <DisputeBanner d={dispute} onClose={() => setDispute(null)}/>}
         {screen === "vehicle" && <VehiclePicker fleet={fleet} onPick={v => go("result", v.vehicle_id)}
           onResume={w => setParams({ vehicle: w.vehicle_id, step: "work", work: w.id })}/>}
 
@@ -234,7 +251,7 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
 
         {screen === "work" && vehicle && (!s.workId
           ? <div className="work-status warn"><AlertTriangle size={28}/><div><b>{t("work.noWork", "Сначала получите результат проверки.")}</b></div></div>
-          : <WorkScreen p={plan} phase={phase} setPhase={setPhase} at={at} setAt={setStepIndex} onOpen={setViewer} busy={s.busy} vehicleId={vehicle.vehicle_id}
+          : <WorkScreen p={plan} phase={phase} setPhase={setPhase} at={at} setAt={setStepIndex} onOpen={setViewer} busy={s.busy} vehicleId={vehicle.vehicle_id} focus={focusNote}
               onAsk={() => step && void ask(t("chat.explainStep", "Объясни подробнее шаг {{n}}: {{text}}", { n: at + 1, text: step.text.slice(0, 160) }))}/>)}
         {screen === "work" && finishError && <div className="work-status bad"><AlertTriangle size={28}/><div><b>{finishError}</b></div></div>}
 
@@ -266,9 +283,9 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
       </div>}
     </div>
 
-    {chatCol && vehicle && <ChatPanel s={s} engine={vehicle.engine_model} onOpen={setViewer} onSpeak={text => void voice.speak(text, true)} voice={voice} heard={heard}/>}
+    {chatCol && vehicle && <ChatPanel s={s} engine={vehicle.engine_model} onOpen={setViewer} onSpeak={text => void voice.speak(text, true)} voice={voice} heard={heard} focus={focusNote}/>}
     {chatOpen && !chatCol && vehicle && <div className="chat-sheet" role="dialog" aria-modal="true">
-      <ChatPanel s={s} engine={vehicle.engine_model} onOpen={setViewer} onSpeak={text => void voice.speak(text, true)} voice={voice} heard={heard}
+      <ChatPanel s={s} engine={vehicle.engine_model} onOpen={setViewer} onSpeak={text => void voice.speak(text, true)} voice={voice} heard={heard} focus={focusNote}
         onClose={() => setChatOpen(false)}/>
     </div>}
     {viewer && <PageViewer page={viewer} onClose={() => setViewer(null)}/>}
@@ -277,12 +294,16 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
 
 /** Work = prepare (tick list) → steps one by one → check (tick list + steps) → after the repair → finish.
  *  Always says what the agent is doing and what to do now. */
-function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicleId }: {
+function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicleId, focus }: {
   p: PlanState; phase: Stage; setPhase: (x: Stage) => void; at: number; setAt: (i: number) => void;
-  onOpen: (r: PageRef) => void; onAsk: () => void; busy: boolean; vehicleId: string;
+  onOpen: (r: PageRef) => void; onAsk: () => void; busy: boolean; vehicleId: string; focus?: string | null;
 }) {
   const { t } = useTranslation();
   const plan = p.plan;
+  // a conflict opened from the disputes journal is shown on the preparation stage, where all of them are
+  useEffect(() => {
+    if (focus && p.loaded && plan?.conflicts?.some(c => c.note === focus)) setPhase("prep");
+  }, [focus, p.loaded, !!plan]);  // eslint-disable-line react-hooks/exhaustive-deps
   // the pictures of all steps load while the mechanic is still preparing (the wizard shows big drawings)
   useEffect(() => { preload((plan?.steps ?? []).map(x => stepPicture(x, x.figure != null ? 900 : 360))); }, [plan]);
   if (!plan) return <div className="work-status"><Loader2 size={28} className="spin"/><div><b>{t("plan.starting", "Готовлю рабочий план…")}</b></div></div>;
@@ -298,6 +319,7 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
       <b>{t("work.finished", "Ремонт записан в сервисную книжку")}</b>
       <Link className="button button-light" to={`/book/${vehicleId}`}><BookOpen size={22}/>{t("book.open", "Открыть сервисную книжку")}</Link>
     </div>
+    {focus && <Conflicts items={plan.conflicts} onOpen={onOpen} focus={focus}/>}
     {afterList}
   </>;
 
@@ -346,7 +368,7 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
       : <div className="work-status warn"><AlertTriangle size={28}/><div>
           <b>{t("work.noSteps", "Шаги в руководстве не найдены")}</b><p>{t("work.noStepsHint", "Спросите ИИ или переходите к заявке.")}</p>
         </div></div>}
-      <Conflicts items={plan.conflicts} onOpen={onOpen}/>
+      <Conflicts items={plan.conflicts} onOpen={onOpen} focus={focus}/>
       {prep.some(i => i.preliminary) && <p className="prep-legend"><span/>{t("work.preliminaryHint", "Пунктир — предварительно, уточняю.")}</p>}
       <CheckList p={p} sections={prepSecs} onOpen={onOpen} checkable/>
     </>}
@@ -413,4 +435,19 @@ function CheckHistory({ sessions, current, onPick }: { sessions: Session[]; curr
         {x.status !== "check_failed" && x.anomaly_score !== null && <em>{Math.round(x.anomaly_score * 100)} %</em>}
       </button></li>)}</ol>
   </section>;
+}
+
+/** Opened from the disputes journal: what the dispute is, right on top, so it is clear why this screen is open. */
+function DisputeBanner({ d, onClose }: { d: Dispute; onClose: () => void }) {
+  const { t } = useTranslation();
+  const rec = typeof d.data?.recommendation === "string" ? d.data.recommendation : "";
+  return <div className="dispute-banner" role="note">
+    <Scale size={26}/>
+    <div>
+      <b>{t("dispute.bannerTitle", "Спорная ситуация")}: {t(`dispute.${d.kind}`, d.kind)}</b>
+      <p>{d.detail}</p>
+      {rec && <p className="conflict-rec"><Lightbulb size={18}/><span><b>{t("conflict.recommendation", "Рекомендация ИИ (не из руководства)")}:</b> {rec}</span></p>}
+    </div>
+    <button onClick={onClose} aria-label={t("close", "Закрыть")}><X size={22}/></button>
+  </div>;
 }

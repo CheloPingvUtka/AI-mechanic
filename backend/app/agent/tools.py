@@ -78,6 +78,10 @@ TOOLS = [
                         "одно руководство запрещает или требует то, чего нет в другом. minor — по сути одно и то же: "
                         "та же норма в других единицах или округлённая при пересчёте (5,6…6,2 кгс·м = 54,9…60,8 Н·м), "
                         "разные формулировки.")},
+                    "recommendation": {"type": "string", "description": (
+                        "Чего придерживаться и почему, 1–2 фразы — инженерная оценка, не из руководства: например, "
+                        "более конкретный документ (руководство по ремонту для ремонтных работ), более новая редакция, "
+                        "более безопасный или строгий вариант. Новых чисел не придумывай — только одна из сторон.")},
                     "sides": {
                         "type": "array",
                         "items": {
@@ -204,7 +208,7 @@ def log_check_disputes(d: DiagnoseResponse, verdict: dict, work_id: str = "") ->
     if kind:
         detail = f"{d.session_id}: {d.anomaly_type} {d.anomaly_title}, уверенность {d.confidence}"
         if not store.has_dispute(kind, d.vehicle_id, detail):
-            store.add_dispute(kind, detail, d.vehicle_id, work_id or None, verdict)
+            store.add_dispute(kind, detail, d.vehicle_id, work_id or None, {**verdict, "session_id": d.session_id})
 
 
 async def search_manual(state: AgentState, query: str) -> dict:
@@ -313,7 +317,8 @@ async def check_photo(state: AgentState, shows: str, matches: str, reason: str) 
     return {"ok": True}
 
 
-async def report_contradiction(state: AgentState, note: str, sides: list[dict], severity: str = "critical") -> dict:
+async def report_contradiction(state: AgentState, note: str, sides: list[dict], severity: str = "critical",
+                               recommendation: str = "") -> dict:
     verified, errors = [], []
     for side in sides or []:
         hit = state.hits.get(side.get("ref", ""))
@@ -326,7 +331,7 @@ async def report_contradiction(state: AgentState, note: str, sides: list[dict], 
         return {"error": "Нужны минимум две дословные цитаты из найденных фрагментов. " + "; ".join(errors)}
     rounding = rounding_only([s["quote"] for s in verified])
     severity = "minor" if rounding or severity == "minor" else "critical"
-    item = {"note": note, "sides": verified, "severity": severity}
+    item = {"note": note, "sides": verified, "severity": severity, "recommendation": recommendation.strip()}
     state.contradictions.append(item)
     store.add_dispute("contradiction", note, state.vehicle.vehicle_id, state.conversation_id or None, item)
     if severity == "minor":
@@ -335,8 +340,9 @@ async def report_contradiction(state: AgentState, note: str, sides: list[dict], 
                                                  "округление, норма одна)" if rounding else "") +
             ". В шагах и ответе его не выделяй и предупреждение не пиши; если нужна норма — дай её по одному "
             "фрагменту со ссылкой.")}
-    return {"ok": True, "severity": "critical",
-            "note": "Покажи механику оба варианта со страницами и посоветуй уточнить у производителя."}
+    return {"ok": True, "severity": "critical", "note": (
+        "Покажи механику оба варианта со страницами, затем отдельной строкой «Рекомендация (не из руководства): …» — "
+        "чего придерживаться и почему, и посоветуй уточнить у производителя.")}
 
 
 HANDLERS = {

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { AlertTriangle, BookOpen, ExternalLink, Info, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, BookOpen, ExternalLink, Info, Lightbulb, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Conflict, PlanItem } from "../../types/domain";
 import type { PageRef } from "./SourceCards";
@@ -31,33 +31,44 @@ function Sides({ c, onOpen }: { c: Conflict; onOpen: (r: PageRef) => void }) {
 
 /** Manuals disagree. Important ones (a different norm, order or ban): a yellow block with both quotes and the
  *  manufacturer's links, which can be closed. Minor ones (the same norm rounded or in other units): one folded line. */
-export default function Conflicts({ items, onOpen }: { items?: Conflict[]; onOpen: (r: PageRef) => void }) {
+function Recommendation({ c }: { c: Conflict }) {
+  const { t } = useTranslation();
+  return c.recommendation ? <p className="conflict-rec"><Lightbulb size={18}/>
+    <span><b>{t("conflict.recommendation", "Рекомендация ИИ (не из руководства)")}:</b> {c.recommendation}</span></p> : null;
+}
+
+/** `focus`: the note of a conflict opened from the disputes journal; it is shown (even if closed) and scrolled to. */
+export default function Conflicts({ items, onOpen, focus }: { items?: Conflict[]; onOpen: (r: PageRef) => void; focus?: string | null }) {
   const { t } = useTranslation();
   const [hidden, setHidden] = useState(readHidden);
+  const focused = useRef<HTMLDivElement>(null);
+  useEffect(() => { focused.current?.scrollIntoView({ block: "center", behavior: "smooth" }); }, [focus, items?.length]);
   if (!items?.length) return null;
   const hide = (c: Conflict) => { const next = [...hidden, signature(c)]; setHidden(next); writeHidden(next); };
   const showAll = () => { const mine = new Set(items.map(signature)); const next = hidden.filter(h => !mine.has(h)); setHidden(next); writeHidden(next); };
-  const shown = items.filter(c => !hidden.includes(signature(c)));
+  const shown = items.filter(c => c.note === focus || !hidden.includes(signature(c)));
   const critical = shown.filter(c => c.severity !== "minor");
   const minor = shown.filter(c => c.severity === "minor");
   const closed = items.length - shown.length;
   return <>
-    {critical.map(c => <div key={signature(c)} className="conflict">
+    {critical.map(c => <div key={signature(c)} className={`conflict ${c.note === focus ? "focus" : ""}`} ref={c.note === focus ? focused : undefined}>
       <AlertTriangle size={28}/>
       <div>
         <b>{t("conflict.title", "Руководства говорят по-разному")}</b>
         {c.note && <p>{c.note}</p>}
         <Sides c={c} onOpen={onOpen}/>
+        <Recommendation c={c}/>
         {c.official.length > 0 && <p className="conflict-official">{t("conflict.ask", "Уточните у производителя:")}
           {c.official.map(o => <a key={o.url} href={o.url} target="_blank" rel="noreferrer">{o.manual}<ExternalLink size={14}/></a>)}</p>}
       </div>
       <button className="conflict-close" onClick={() => hide(c)} aria-label={t("conflict.hide", "Скрыть")} title={t("conflict.hide", "Скрыть")}><X size={22}/></button>
     </div>)}
-    {minor.length > 0 && <details className="conflict-minor">
+    {minor.length > 0 && <details className="conflict-minor" open={minor.some(c => c.note === focus) || undefined}>
       <summary><Info size={18}/>{t("conflict.minor", "Мелкие расхождения в руководствах: {{n}} — норма та же, округлена по-разному", { n: minor.length })}</summary>
-      {minor.map(c => <div key={signature(c)} className="conflict-minor-item">
+      {minor.map(c => <div key={signature(c)} className={`conflict-minor-item ${c.note === focus ? "focus" : ""}`} ref={c.note === focus ? focused : undefined}>
         {c.note && <p>{c.note}</p>}
         <Sides c={c} onOpen={onOpen}/>
+        <Recommendation c={c}/>
         <button className="conflict-hide-link" onClick={() => hide(c)}>{t("conflict.hide", "Скрыть")}</button>
       </div>)}
     </details>}

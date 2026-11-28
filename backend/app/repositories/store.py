@@ -210,14 +210,18 @@ def has_dispute(kind: str, vehicle_id: str, detail: str) -> bool:
 
 
 def disputes(resolved: bool | None = None, vehicle_id: str | None = None) -> list[dict]:
-    sql, args = "select * from disputes where 1=1", []
+    """With the check and the work they came from (session_id, work_status: active | done | chat), so the UI
+    can open the very place."""
+    sql = ("select d.*, w.session_id as session_id, w.status as work_status from disputes d "
+           "left join works w on w.id = d.work_id where 1=1")
+    args: list = []
     if resolved is not None:
-        sql += " and resolved=?"
+        sql += " and d.resolved=?"
         args.append(int(resolved))
     if vehicle_id:
-        sql += " and vehicle_id=?"
+        sql += " and d.vehicle_id=?"
         args.append(vehicle_id)
-    rows = _rows(sql + " order by created_at desc, id desc", tuple(args))
+    rows = _rows(sql + " order by d.created_at desc, d.id desc", tuple(args))
     for row in rows:
         row["data"] = json.loads(row["data"]) if row["data"] else None
         row["resolved"] = bool(row["resolved"])

@@ -26,9 +26,9 @@ export function speakable(answer: string): string {
 }
 
 /** Chat with the agent: live progress, answers as step cards with sources, photos, quick questions; optional voice. */
-export default function ChatPanel({ s, engine, onOpen, onSpeak, voice, heard = "", onClose }: {
+export default function ChatPanel({ s, engine, onOpen, onSpeak, voice, heard = "", onClose, focus }: {
   s: CheckSession; engine: string; onOpen: (p: PageRef) => void; onSpeak?: (text: string) => void;
-  voice?: Voice; heard?: string; onClose?: () => void;
+  voice?: Voice; heard?: string; onClose?: () => void; focus?: string | null;  // a conflict opened from the disputes journal
 }) {
   const { t } = useTranslation();
   const [question, setQuestion] = useState("");
@@ -73,7 +73,7 @@ export default function ChatPanel({ s, engine, onOpen, onSpeak, voice, heard = "
           if (src) onOpen(withExcerpt(src));
         }} steps={m.error ? undefined : { sources: m.sources, figures: m.figures, onOpen, busy: s.busy,
           onExplain: (n, text) => void s.send(t("chat.explainStep", "Объясни подробнее шаг {{n}}: {{text}}", { n, text })) }}/>}
-        <Conflicts items={m.contradictions} onOpen={onOpen}/>
+        <Conflicts items={m.contradictions} onOpen={onOpen} focus={focus}/>
         {!!m.sources?.length && <SourceCards sources={m.sources} onOpen={onOpen}/>}
         {!!m.events?.length && <ProgressLog events={m.events} onOpen={onOpen}/>}
         {m.role === "assistant" && !m.error && onSpeak && <button className="speak-button" onClick={() => onSpeak(speakable(m.text))}>

@@ -93,7 +93,7 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
         const saved = await api.work(work_id).catch(() => null);
         if (stale()) return null;
         if (saved?.chat.length) {
-          setMessages(saved.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost, figures: m.figures })));
+          setMessages(saved.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost, figures: m.figures, contradictions: m.contradictions })));
           setTicket([...saved.chat].reverse().find(m => m.ticket)?.ticket ?? null);
           return assessment;
         }
@@ -116,7 +116,7 @@ export function useCheckSession(vehicle: FleetVehicle | undefined) {
       if (stale()) return null;
       conversation.current = w.work_id;
       setSessionId(w.session_id); setWorkId(w.work_id);
-      setMessages(w.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost, figures: m.figures })));
+      setMessages(w.chat.map(m => ({ id: crypto.randomUUID(), role: m.role, text: m.text, sources: m.sources, cost: m.cost, figures: m.figures, contradictions: m.contradictions })));
       setTicket([...w.chat].reverse().find(m => m.ticket)?.ticket ?? null);
       const assessment = await api.diagnose(w.vehicle_id, w.session_id);
       if (stale()) return null;

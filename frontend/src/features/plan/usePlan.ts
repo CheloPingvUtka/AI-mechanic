@@ -14,14 +14,15 @@ export function usePlan(workId: string | null) {
   const [stage, setStage] = useState<Stage>("prep");
   const [finished, setFinished] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
-  const [round, setRound] = useState(0);  // bumped by rebuild(): subscribe to the new build
+  const [round, setRound] = useState(0);
+  const [loaded, setLoaded] = useState(false);  // the saved progress (stage, ticks) is in  // bumped by rebuild(): subscribe to the new build
   const restored = useRef(false);
   const firstSeen = useRef(new Map<number, number>());
   const [, tick] = useState(0);
 
   useEffect(() => {
     setPlan(null); setEvents([]); setSteps({}); setStage("prep"); setFinished(false); setSaveFailed(false);
-    restored.current = false; firstSeen.current.clear();
+    restored.current = false; firstSeen.current.clear(); setLoaded(false);
     if (!workId) return;
     let live = true;
     // Saved progress first (resuming a repair), then the live plan.
@@ -34,7 +35,7 @@ export function usePlan(workId: string | null) {
       });
       if (p?.stage) setStage(p.stage);
       setFinished(w.status === "done");
-    }).catch(() => { /* new work: nothing saved yet */ }).finally(() => { if (live) restored.current = true; });
+    }).catch(() => { /* new work: nothing saved yet */ }).finally(() => { if (live) { restored.current = true; setLoaded(true); } });
     let initial = true;
     const stop = watchWork(workId, p => {
       const now = Date.now();
@@ -88,7 +89,7 @@ export function usePlan(workId: string | null) {
   const setStep = (id: number, patch: Partial<StepState>) =>
     setSteps(s => ({ ...s, [id]: { ...(s[id] ?? { done: false, value: "" }), ...patch } }));
   const doneCount = plan ? plan.steps.filter(s => steps[s.id]?.done).length : 0;
-  return { plan, events, isNew, stepState, setStep, doneCount, stage, setStage, finished, finish, saveFailed, rebuild };
+  return { plan, events, isNew, stepState, setStep, doneCount, stage, setStage, finished, finish, saveFailed, rebuild, loaded };
 }
 
 export type PlanState = ReturnType<typeof usePlan>;
