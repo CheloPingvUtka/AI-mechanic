@@ -94,3 +94,15 @@ def test_chat_sees_the_work_plan_steps():
     text = agent_service.system_prompt(vehicle(), "S-0005", plan)
     assert "План работ во вкладке «Работа»:\n1. Прогреть двигатель и прослушать (стр. 142)\n2. Проверить подачу масла (стр. 91)" in text
     assert "План работ во вкладке" not in agent_service.system_prompt(vehicle(), "S-0005", None)
+
+
+def test_disputes_carry_their_check_and_work():
+    state = agent_service.AgentState(vehicle=vehicle(), session_id="S-0005", conversation_id="w5")
+    state.plan = WorkPlan(status="ready")
+    agent_service.save_conversation("w5", agent_service.Conversation(state=state), status="active")
+    store.add_dispute("contradiction", "Разный момент", "M333YK47", "w5", {"recommendation": "РК"})
+    store.add_dispute("low_confidence", "Ниже порога", "M333YK47", None)
+    by_kind = {d["kind"]: d for d in store.disputes()}
+    assert (by_kind["contradiction"]["session_id"], by_kind["contradiction"]["work_status"]) == ("S-0005", "active")
+    assert by_kind["low_confidence"]["session_id"] is None
+    agent_service.CONVERSATIONS.clear()

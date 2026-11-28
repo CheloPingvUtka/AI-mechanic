@@ -348,6 +348,7 @@ const uz = {
     title: "Tekshiruvlar dinamikasi",
   },
   conflict: {
+    recommendation: "Sun’iy intellekt tavsiyasi (qo‘llanmadan emas)",
     hide: "Yashirish",
     minor: "Qo‘llanmalarda mayda farqlar: {{n}} — me’yor bir xil, turlicha yaxlitlangan",
     hiddenN: "Yashirilgan farqlar: {{n}} — ko‘rsatish",
@@ -355,6 +356,8 @@ const uz = {
     title: "Qo‘llanmalarda turlicha yozilgan",
   },
   dispute: {
+    bannerTitle: "Bahsli holat",
+    goto: "Holatni ochish",
     contradiction: "Qo‘llanmalar bir-biriga zid",
     empty: "Bahsli holatlar yo‘q.",
     fuel_mismatch: "Bu nosozlik bu dvigatelga to‘g‘ri kelmaydi",

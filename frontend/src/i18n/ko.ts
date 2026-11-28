@@ -348,6 +348,7 @@ const ko = {
     title: "점검 추이",
   },
   conflict: {
+    recommendation: "AI 권장 사항 (설명서 내용 아님)",
     hide: "숨기기",
     minor: "설명서의 작은 차이: {{n}}개 — 기준은 같고 반올림만 달라요",
     hiddenN: "숨긴 차이: {{n}}개 — 보기",
@@ -355,6 +356,8 @@ const ko = {
     title: "설명서마다 내용이 달라요",
   },
   dispute: {
+    bannerTitle: "논쟁 상황",
+    goto: "상황 열기",
     contradiction: "설명서 내용이 서로 달라요",
     empty: "분쟁 상황이 없어요.",
     fuel_mismatch: "이 엔진에는 맞지 않는 고장",

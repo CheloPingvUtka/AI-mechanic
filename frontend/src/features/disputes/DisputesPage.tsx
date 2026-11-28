@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Ban, CheckCircle2, Circle, Fuel, Gauge, Hash, ImageOff, Loader2, Scale } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, BookOpen, CheckCircle2, Circle, Fuel, Gauge, Hash, ImageOff, Lightbulb, Loader2, Scale } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, useLoad } from "../../lib/api";
 import type { Dispute } from "../../types/domain";
@@ -9,6 +9,18 @@ const ICONS: Record<string, ReactNode> = {
   contradiction: <Scale size={24}/>, unverified_numbers: <Hash size={24}/>, ticket_rejected: <Ban size={24}/>,
   low_confidence: <Gauge size={24}/>, fuel_mismatch: <Fuel size={24}/>, photo_mismatch: <ImageOff size={24}/>,
 };
+
+/** Where a dispute happened: a conflict between manuals is shown in its repair (preparation stage, highlighted);
+ *  a doubtful answer opens the repair with its chat; a doubtful check opens the anamnesis with that check. */
+export function disputeTarget(d: Dispute): string {
+  const v = encodeURIComponent(d.vehicle_id);
+  const repair = !!d.work_id && (d.work_status === "active" || d.work_status === "done");
+  if (repair && d.kind === "contradiction") return `/?vehicle=${v}&step=work&work=${d.work_id}&dispute=${d.id}`;
+  if (repair && ["unverified_numbers", "photo_mismatch", "ticket_rejected"].includes(d.kind))
+    return `/?vehicle=${v}&step=result&work=${d.work_id}&chat=1`;
+  const session = d.session_id ?? (typeof d.data?.session_id === "string" ? d.data.session_id : null);
+  return `/?vehicle=${v}&step=result${session ? `&session=${encodeURIComponent(session)}` : ""}`;
+}
 
 /** Chief mechanic's journal: where the AI was unsure or the manuals disagree. Unresolved first; one tap marks it resolved. */
 export default function DisputesPage() {
@@ -44,8 +56,14 @@ export default function DisputesPage() {
       <div className="dispute-body">
         <div className="tl-top"><b>{kindLabel[d.kind] ?? d.kind}</b>
           <time>{new Date(d.created_at * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></div>
-        <Link className="dispute-vehicle" to={`/book/${d.vehicle_id}`}>{d.vehicle_id}</Link>
+        <b className="dispute-vehicle-id">{d.vehicle_id}</b>
         <p>{d.detail}</p>
+        {typeof d.data?.recommendation === "string" && d.data.recommendation && <p className="conflict-rec"><Lightbulb size={18}/>
+          <span><b>{t("conflict.recommendation", "Рекомендация ИИ (не из руководства)")}:</b> {d.data.recommendation}</span></p>}
+        <div className="dispute-links">
+          <Link className="dispute-open" to={disputeTarget(d)}>{t("dispute.goto", "Открыть ситуацию")}<ArrowRight size={20}/></Link>
+          <Link className="dispute-book" to={`/book/${d.vehicle_id}`}><BookOpen size={18}/>{t("book.short", "Книжка")}</Link>
+        </div>
       </div>
       <button className={`dispute-toggle ${isResolved(d) ? "on" : ""}`} aria-pressed={isResolved(d)} onClick={() => void toggle(d)}>
         {isResolved(d) ? <CheckCircle2 size={26}/> : <Circle size={26}/>}<span>{t("dispute.resolved", "Разобрано")}</span>

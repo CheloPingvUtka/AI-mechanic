@@ -102,6 +102,7 @@ export interface Conflict {
   sides: { manual_id: string; manual: string; pdf_page: number; quote: string }[];
   official: { manual: string; url: string }[];
   severity?: "critical" | "minor";  // minor: the same norm rounded or in other units
+  recommendation?: string;  // which side to keep to and why: the AI's opinion, not the manual
 }
 
 export type Stage = "prep" | "work" | "check" | "after";
@@ -133,7 +134,8 @@ export interface WorkSnapshot {
   status: "active" | "done";
   plan: WorkPlan | null;
   progress: WorkProgress | null;
-  chat: { role: "user" | "assistant"; text: string; sources?: Source[]; ticket?: Ticket | null; cost?: number; figures?: Record<string, FigurePick> }[];
+  chat: { role: "user" | "assistant"; text: string; sources?: Source[]; ticket?: Ticket | null; cost?: number; figures?: Record<string, FigurePick>;
+    contradictions?: Conflict[] }[];
 }
 
 export type BookKind = "diagnosis" | "recheck" | "ticket" | "defect" | "repair" | "recommendation" | "note";
@@ -163,7 +165,10 @@ export interface Dispute {
   created_at: number;
   kind: "contradiction" | "unverified_numbers" | "ticket_rejected" | "low_confidence" | "fuel_mismatch" | "photo_mismatch" | string;
   detail: string;
+  data?: Record<string, unknown> | null;
   resolved: boolean;
+  session_id?: string | null;   // the check it came from (through its work)
+  work_status?: "active" | "done" | "chat" | null;  // active/done: a repair with a plan; chat: a conversation only
 }
 
 export interface PhotoCheck {

@@ -11,15 +11,24 @@ import type { PhotoCheck } from "../../types/domain";
 import { LiveProgress, ProgressLog } from "../../components/ui/AgentProgress";
 
 /** First paragraph of an answer, without markdown: what gets read aloud. */
+/** What is read aloud of an answer: its first one or two sentences, without page and figure references (the
+ *  server reads only what its voice says word for word, and shorter plain text passes that check). */
 export function speakable(answer: string): string {
-  const first = answer.split(/\n\s*\n/)[0] ?? "";
-  return first.replace(/\*\*/g, "").replace(/\([^()]*стр\. \d+\)/g, "").replace(/^[#\-*•\d.)\s]+/gm, "").trim().slice(0, 400);
+  const first = (answer.split(/\n\s*\n/)[0] ?? "").replace(/\*\*/g, "")
+    .replace(/\([^()]*(стр\.|рис\.|см\.|bet|쪽)[^()]*\)/gi, "").replace(/^[#\-*•\d.)\s]+/gm, "").replace(/\s+/g, " ").replace(/\s+([.,;:!?])/g, "$1").trim();
+  const sentences = first.match(/[^.!?…]+[.!?…]*/g) ?? [first];
+  let out = "";
+  for (const s of sentences) {
+    if (out && (out + s).length > 260) break;
+    out += s;
+  }
+  return out.trim().slice(0, 400);
 }
 
 /** Chat with the agent: live progress, answers as step cards with sources, photos, quick questions; optional voice. */
-export default function ChatPanel({ s, engine, onOpen, onSpeak, voice, heard = "", onClose }: {
+export default function ChatPanel({ s, engine, onOpen, onSpeak, voice, heard = "", onClose, focus }: {
   s: CheckSession; engine: string; onOpen: (p: PageRef) => void; onSpeak?: (text: string) => void;
-  voice?: Voice; heard?: string; onClose?: () => void;
+  voice?: Voice; heard?: string; onClose?: () => void; focus?: string | null;  // a conflict opened from the disputes journal
 }) {
   const { t } = useTranslation();
   const [question, setQuestion] = useState("");
@@ -64,7 +73,7 @@ export default function ChatPanel({ s, engine, onOpen, onSpeak, voice, heard = "
           if (src) onOpen(withExcerpt(src));
         }} steps={m.error ? undefined : { sources: m.sources, figures: m.figures, onOpen, busy: s.busy,
           onExplain: (n, text) => void s.send(t("chat.explainStep", "Объясни подробнее шаг {{n}}: {{text}}", { n, text })) }}/>}
-        <Conflicts items={m.contradictions} onOpen={onOpen}/>
+        <Conflicts items={m.contradictions} onOpen={onOpen} focus={focus}/>
         {!!m.sources?.length && <SourceCards sources={m.sources} onOpen={onOpen}/>}
         {!!m.events?.length && <ProgressLog events={m.events} onOpen={onOpen}/>}
         {m.role === "assistant" && !m.error && onSpeak && <button className="speak-button" onClick={() => onSpeak(speakable(m.text))}>
