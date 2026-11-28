@@ -6,8 +6,8 @@ gets them at deployment from the link given in the task materials. The link is r
 
     MATERIALS_URL=<link from the task materials> backend/.venv/bin/python scripts/fetch_materials.py --write-env --index
 
-Environment:
-    MATERIALS_URL     the archive with the task materials (zip), required
+Environment (or the same names in backend/.env):
+    MATERIALS_URL     the task materials: a zip, or a public Yandex Disk link (a folder comes as a zip), required
     MATERIALS_DIR     where to put it, outside the repository (default: ../private-materials next to the repo)
     MATERIALS_SHA256  optional: the archive's checksum, to refuse a damaged or substituted file
 
@@ -18,6 +18,7 @@ Options:
 """
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -33,6 +34,31 @@ BACKEND = ROOT / "backend"
 
 def fail(message: str) -> None:
     sys.exit(f"fetch_materials: {message}")
+
+
+YANDEX_DISK = ("disk.yandex.ru", "disk.yandex.com", "disk.360.yandex.ru", "yadi.sk")
+
+
+def setting(name: str) -> str:
+    """From the environment, else from backend/.env (where a stand keeps its configuration)."""
+    if os.environ.get(name, "").strip():
+        return os.environ[name].strip()
+    env = BACKEND / ".env"
+    for line in env.read_text(encoding="utf-8").splitlines() if env.exists() else []:
+        key, _, value = line.partition("=")
+        if key.strip() == name:
+            return value.strip().strip('"').strip("'")
+    return ""
+
+
+def direct_link(url: str) -> str:
+    """A public Yandex Disk link is a web page: ask the Disk API for the file (a folder is given as a zip)."""
+    if (urllib.parse.urlsplit(url).hostname or "") not in YANDEX_DISK:
+        return url
+    api = "https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key=" + urllib.parse.quote(url, safe="")
+    request = urllib.request.Request(api, headers={"User-Agent": "digital-mechanic-materials"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)["href"]
 
 
 def download(url: str, dest: Path) -> None:
@@ -130,10 +156,10 @@ def main() -> None:
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    url = os.environ.get("MATERIALS_URL", "").strip()
+    url = setting("MATERIALS_URL")
     if not url:
         fail("set MATERIALS_URL to the link from the task materials")
-    folder = Path(os.environ.get("MATERIALS_DIR") or ROOT.parent / "private-materials").expanduser().resolve()
+    folder = Path(setting("MATERIALS_DIR") or ROOT.parent / "private-materials").expanduser().resolve()
     if folder == ROOT or ROOT in folder.parents:
         fail(f"MATERIALS_DIR must be outside the repository: {folder}")
     folder.mkdir(parents=True, exist_ok=True)
@@ -143,8 +169,8 @@ def main() -> None:
     archive = folder / "materials.zip"
     if args.force or not marker.exists() or marker.read_text().strip() != link_id:
         print(f"Downloading the task materials from {urllib.parse.urlsplit(url).hostname or 'a local file'} …")
-        download(url, archive)
-        expected = os.environ.get("MATERIALS_SHA256", "").strip().lower()
+        download(direct_link(url), archive)
+        expected = setting("MATERIALS_SHA256").lower()
         if expected and sha256(archive) != expected:
             archive.unlink()
             fail("checksum does not match MATERIALS_SHA256: the archive was not kept")
