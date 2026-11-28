@@ -97,6 +97,8 @@ const uz = {
   page: "bet",
   photoQuestion: "Suratda nima bor? Tekshirish kerak bo‘lgan joy shumi?",
   plan: {
+    skipped: "O‘tkazib yuborildi: o‘lchov kiritilmadi. Qiymatni kiriting — qadam hisoblanadi",
+    skippedShort: "o‘tkazildi",
     aftercare: "Ta’mirdan keyin",
     disassembly: "Nimani yechish kerak",
     prepCar: "Mashina va ish joyini tayyorlash",
@@ -266,6 +268,8 @@ const uz = {
     getShort: "Natijani olish",
   },
   work: {
+    skipNext: "O‘lchovsiz — keyingi",
+    skippedN: "O‘tkazilgan o‘lchovlar: {{n}} — bu servis daftariga yoziladi",
     saveFailed: "Saqlanmadi. Aloqani tekshiring",
     finished: "Ta’mir servis daftariga yozildi",
     finish: "Ta’mirni yakunlash",
@@ -356,6 +360,7 @@ const uz = {
     title: "Qo‘llanmalarda turlicha yozilgan",
   },
   dispute: {
+    measure_skipped: "O‘lchovlar o‘tkazib yuborildi",
     bannerTitle: "Bahsli holat",
     goto: "Holatni ochish",
     contradiction: "Qo‘llanmalar bir-biriga zid",

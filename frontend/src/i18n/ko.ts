@@ -97,6 +97,8 @@ const ko = {
   page: "쪽",
   photoQuestion: "사진에 뭐가 있어요? 여기가 점검해야 할 곳이에요?",
   plan: {
+    skipped: "건너뜀: 측정값을 입력하지 않았어요. 값을 입력하면 완료로 처리돼요",
+    skippedShort: "건너뜀",
     aftercare: "수리 후 관리",
     disassembly: "떼어낼 것",
     prepCar: "차량과 작업장 준비",
@@ -266,6 +268,8 @@ const ko = {
     getShort: "결과 받기",
   },
   work: {
+    skipNext: "측정 없이 다음",
+    skippedN: "건너뛴 측정: {{n}}개 — 정비 기록부에 기록돼요",
     saveFailed: "저장되지 않았어요. 연결을 확인하세요",
     finished: "정비 수첩에 기록했어요",
     finish: "수리 완료",
@@ -356,6 +360,7 @@ const ko = {
     title: "설명서마다 내용이 달라요",
   },
   dispute: {
+    measure_skipped: "측정 건너뜀",
     bannerTitle: "논쟁 상황",
     goto: "상황 열기",
     contradiction: "설명서 내용이 서로 달라요",

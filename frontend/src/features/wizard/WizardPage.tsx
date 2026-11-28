@@ -120,9 +120,11 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
     else if (phase === "work") setPhase("prep");
     else go("result");
   }
+  /** «Дальше» on a step: done, or — a measurement step left without its value — skipped (logged, not counted as done). */
   function finishStep() {
     if (!step) return;
-    plan.setStep(step.id, { done: true });
+    const noValue = !!step.measure && !plan.stepState(step.id).value.trim();
+    plan.setStep(step.id, noValue ? { done: false, skipped: true } : { done: true });
     workNext();
   }
   async function ask(text: string) {
@@ -190,7 +192,9 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
       : plan.plan.status === "failed" ? { label: t("work.rebuild", "Собрать заново"), onClick: () => void plan.rebuild(), icon: <RefreshCw size={22}/> }
       : finishWork)
     : phase === "work" ? (step && !plan.stepState(step.id).done
-      ? { label: lastStep ? t("work.doneLast", "Сделано, к проверке") : t("work.doneNext", "Сделано, дальше"), onClick: finishStep, icon: <Check size={24}/> }
+      ? (step.measure && !plan.stepState(step.id).value.trim()
+        ? { label: t("work.skipNext", "Без замера — дальше"), onClick: finishStep, icon: <AlertTriangle size={22}/> }
+        : { label: lastStep ? t("work.doneLast", "Сделано, к проверке") : t("work.doneNext", "Сделано, дальше"), onClick: finishStep, icon: <Check size={24}/> })
       : { label: lastStep ? t("work.toCheck", "К проверке") : t("wizard.next", "Дальше"), onClick: workNext })
     : phase === "check" && aftercare.length ? { label: t("work.toAfter", "После ремонта"), onClick: workNext }
     : finishWork;
@@ -379,7 +383,7 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
         {building && <span className="work-more"><Loader2 size={16} className="spin"/>{t("work.moreSteps", "ищу ещё шаги")}</span>}
       </div>
       <div className="step-progress" aria-hidden="true">{steps.map((x, i) =>
-        <span key={x.id} className={i === at ? "current" : p.stepState(x.id).done ? "done" : ""}/>)}</div>
+        <span key={x.id} className={i === at ? "current" : p.stepState(x.id).done ? "done" : p.stepState(x.id).skipped ? "skipped" : ""}/>)}</div>
       <ol className="step-cards">
         <StepCard key={step.id} item={step} n={at + 1} state={p.stepState(step.id)} big isNew={p.isNew(step)}
           setStep={patch => p.setStep(step.id, patch)} onOpen={onOpen}/>
@@ -399,9 +403,10 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
       {steps.length > 0 && <ol className="summary-list">{steps.map((x, i) => {
         const st = p.stepState(x.id);
         const ok = inNorm(x, st.value);
-        return <li key={x.id}><button className={st.done ? "done" : ""} onClick={() => { setAt(i); setPhase("work"); }}>
-          {st.done ? <CheckCircle2 size={26}/> : <Circle size={26}/>}<span><b>{i + 1}.</b> {x.text}</span>
+        return <li key={x.id}><button className={st.done ? "done" : st.skipped ? "skipped" : ""} onClick={() => { setAt(i); setPhase("work"); }}>
+          {st.done ? <CheckCircle2 size={26}/> : st.skipped ? <AlertTriangle size={26}/> : <Circle size={26}/>}<span><b>{i + 1}.</b> {x.text}</span>
           {st.value && <em className={ok === true ? "ok" : ok === false ? "bad" : ""}>{st.value} {x.measure?.unit}</em>}
+          {st.skipped && <em className="skipped">{t("plan.skippedShort", "пропущено")}</em>}
         </button></li>;
       })}</ol>}
     </>}
@@ -413,6 +418,7 @@ function WorkScreen({ p, phase, setPhase, at, setAt, onOpen, onAsk, busy, vehicl
           </div></div>
         : <div className="work-status warn"><AlertTriangle size={28}/><div>
             <b>{t("work.afterLeft", "Не всё отмечено: шаги {{n}} из {{total}}, проверка {{q}} из {{qt}}", { n: p.doneCount, total: steps.length, q: checked, qt: quality.length })}</b>
+            {p.skippedCount > 0 && <p><b>{t("work.skippedN", "Пропущено замеров: {{n}} — это будет записано в сервисную книжку", { n: p.skippedCount })}</b></p>}
             <p>{t("work.afterLeftHint", "Вернитесь и отметьте, или завершите ремонт так.")}</p>
           </div></div>}
       {afterList}

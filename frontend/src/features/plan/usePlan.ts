@@ -3,7 +3,8 @@ import { api, pushEvent, watchWork } from "../../lib/api";
 import type { AgentEvent, PlanItem, Stage, WorkPlan, WorkProgress } from "../../types/domain";
 
 const NEW_FOR_MS = 20000;
-export type StepState = { done: boolean; value: string };
+// skipped: a step with a measurement the mechanic went past without entering the value (logged as such, not as done)
+export type StepState = { done: boolean; value: string; skipped?: boolean };
 
 /** Live work plan for a check plus the mechanic's progress on it (done marks, ticks, measured values, stage),
  *  restored from the server and saved back about a second after every change. */
@@ -31,7 +32,7 @@ export function usePlan(workId: string | null) {
       const p = w.progress;
       if (p) setSteps({
         ...Object.fromEntries(Object.entries(p.checks ?? {}).map(([id, done]) => [id, { done: !!done, value: "" }])),
-        ...Object.fromEntries(Object.entries(p.steps ?? {}).map(([id, x]) => [id, { done: !!x.done, value: x.value ?? "" }])),
+        ...Object.fromEntries(Object.entries(p.steps ?? {}).map(([id, x]) => [id, { done: !!x.done, value: x.value ?? "", skipped: !!x.skipped }])),
       });
       if (p?.stage) setStage(p.stage);
       setFinished(w.status === "done");
@@ -87,9 +88,11 @@ export function usePlan(workId: string | null) {
   const isNew = (i: PlanItem) => Date.now() - (firstSeen.current.get(i.id) ?? 0) < NEW_FOR_MS;
   const stepState = (id: number): StepState => steps[id] ?? { done: false, value: "" };
   const setStep = (id: number, patch: Partial<StepState>) =>
-    setSteps(s => ({ ...s, [id]: { ...(s[id] ?? { done: false, value: "" }), ...patch } }));
+    setSteps(s => ({ ...s, [id]: { ...(s[id] ?? { done: false, value: "" }), ...patch,
+      ...(patch.value?.trim() || patch.done ? { skipped: false } : {}) } }));  // a value entered later: no longer skipped
   const doneCount = plan ? plan.steps.filter(s => steps[s.id]?.done).length : 0;
-  return { plan, events, isNew, stepState, setStep, doneCount, stage, setStage, finished, finish, saveFailed, rebuild, loaded };
+  const skippedCount = plan ? plan.steps.filter(s => steps[s.id]?.skipped).length : 0;
+  return { plan, events, isNew, stepState, setStep, doneCount, stage, setStage, finished, finish, saveFailed, rebuild, loaded, skippedCount };
 }
 
 export type PlanState = ReturnType<typeof usePlan>;

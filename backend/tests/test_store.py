@@ -106,3 +106,24 @@ def test_disputes_carry_their_check_and_work():
     assert (by_kind["contradiction"]["session_id"], by_kind["contradiction"]["work_status"]) == ("S-0005", "active")
     assert by_kind["low_confidence"]["session_id"] is None
     agent_service.CONVERSATIONS.clear()
+
+
+def test_a_measurement_gone_past_is_logged_as_skipped(monkeypatch):
+    monkeypatch.setattr(plan_service, "JsonVehicleCatalog", FakeCatalog)
+    state = agent_service.AgentState(vehicle=vehicle(), session_id="S-0005", diagnosis=make_result(), conversation_id="w6")
+    measured = PlanItem(text="Замерить момент", preliminary=False, measure=Measure(name="Момент", unit="Н·м", min=421, max=461))
+    plain = PlanItem(text="Снять крышку", preliminary=False)
+    state.plan = WorkPlan(steps=[measured, plain])
+    agent_service.save_conversation("w6", agent_service.Conversation(state=state), status="active")
+    store.update_work_data("w6", progress={"steps": {str(measured.id): {"done": False, "value": "", "skipped": True},
+                                                     str(plain.id): {"done": True, "value": ""}}, "checks": {}})
+    agent_service.CONVERSATIONS.clear()
+    plan_service.WORKS.clear()
+
+    plan_service.finish("w6")
+    defect = next(e for e in store.entries("M333YK47") if e["kind"] == "defect")
+    assert [(r["skipped"], r["done"]) for r in defect["data"]["steps"]] == [(True, False), (False, True)]
+    assert "пропущено: 1" in defect["text"]
+    assert [d["kind"] for d in store.disputes()] == ["measure_skipped"]
+    agent_service.CONVERSATIONS.clear()
+    plan_service.WORKS.clear()

@@ -108,7 +108,7 @@ export interface Conflict {
 export type Stage = "prep" | "work" | "check" | "after";
 
 export interface WorkProgress {
-  steps: Record<string, { done: boolean; value: string }>;
+  steps: Record<string, { done: boolean; value: string; skipped?: boolean }>;
   checks: Record<string, boolean>;
   stage: Stage | null;
 }

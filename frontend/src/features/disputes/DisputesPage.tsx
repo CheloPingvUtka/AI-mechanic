@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowRight, Ban, BookOpen, CheckCircle2, Circle, Fuel, Gauge, Hash, ImageOff, Lightbulb, Loader2, Scale } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, BookOpen, CheckCircle2, Circle, Fuel, Gauge, Hash, ImageOff, Lightbulb, Loader2, Ruler, Scale } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, useLoad } from "../../lib/api";
 import type { Dispute } from "../../types/domain";
@@ -8,6 +8,7 @@ import type { Dispute } from "../../types/domain";
 const ICONS: Record<string, ReactNode> = {
   contradiction: <Scale size={24}/>, unverified_numbers: <Hash size={24}/>, ticket_rejected: <Ban size={24}/>,
   low_confidence: <Gauge size={24}/>, fuel_mismatch: <Fuel size={24}/>, photo_mismatch: <ImageOff size={24}/>,
+  measure_skipped: <Ruler size={24}/>,
 };
 
 /** Where a dispute happened: a conflict between manuals is shown in its repair (preparation stage, highlighted);
@@ -16,6 +17,7 @@ export function disputeTarget(d: Dispute): string {
   const v = encodeURIComponent(d.vehicle_id);
   const repair = !!d.work_id && (d.work_status === "active" || d.work_status === "done");
   if (repair && d.kind === "contradiction") return `/?vehicle=${v}&step=work&work=${d.work_id}&dispute=${d.id}`;
+  if (repair && d.kind === "measure_skipped") return `/?vehicle=${v}&step=work&work=${d.work_id}&dispute=${d.id}`;
   if (repair && ["unverified_numbers", "photo_mismatch", "ticket_rejected"].includes(d.kind))
     return `/?vehicle=${v}&step=result&work=${d.work_id}&chat=1`;
   const session = d.session_id ?? (typeof d.data?.session_id === "string" ? d.data.session_id : null);
@@ -34,6 +36,7 @@ export default function DisputesPage() {
     low_confidence: t("dispute.low_confidence", "Низкая уверенность"),
     fuel_mismatch: t("dispute.fuel_mismatch", "Неисправность не для этого двигателя"),
     photo_mismatch: t("dispute.photo_mismatch", "Фото не того двигателя"),
+    measure_skipped: t("dispute.measure_skipped", "Замеры пропущены"),
   };
   const list = [...(data ?? [])].sort((a, b) => Number(a.resolved) - Number(b.resolved) || b.created_at - a.created_at);
   const isResolved = (d: Dispute) => resolved[d.id] ?? d.resolved;

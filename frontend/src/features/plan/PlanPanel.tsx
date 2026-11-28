@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BookOpen, CheckCircle2, Circle, Cog, HardHat, Loader2, Package, Send, Sparkles, Truck, Wrench } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, Circle, Cog, HardHat, Loader2, Package, Send, Sparkles, Truck, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { PlanItem, WorkPlan } from "../../types/domain";
@@ -93,10 +93,11 @@ export function StepCard({ item, n, state, setStep, onOpen, big = false, isNew =
   const ref = pageRef(item);
   // only the drawing the model chose for this step; without one, the cited page itself (quote highlighted)
   const pic = ref && item.figure != null ? { ...ref, pdf_page: item.figure_page ?? ref.pdf_page } : null;
-  return <li className={`step-card ${big ? "step-big" : ""} ${state.done ? "done" : ""} ${isNew ? "is-new" : ""}`}>
+  return <li className={`step-card ${big ? "step-big" : ""} ${state.done ? "done" : ""} ${state.skipped ? "skipped" : ""} ${isNew ? "is-new" : ""}`}>
     <div className="step-num">{state.done ? <CheckCircle2 size={22}/> : n}</div>
     <div className="step-body">
       <p className="step-text">{item.text}</p>
+      {state.skipped && <p className="step-skipped"><AlertTriangle size={18}/>{t("plan.skipped", "Пропущено: замер не введён. Введите значение — шаг засчитается")}</p>}
       {item.measure && <div className={`measure ${ok === true ? "ok" : ok === false ? "bad" : ""}`}>
         <label>{item.measure.name}</label>
         <div className="measure-row">

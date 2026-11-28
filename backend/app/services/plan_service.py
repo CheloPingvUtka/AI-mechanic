@@ -312,15 +312,23 @@ def finish(work_id: str) -> list[int]:
     for i, s in enumerate(plan.steps, 1):
         st = states.get(str(s.id)) or {}
         measure = asdict(s.measure) if s.measure else None
-        rows.append({"n": i, "text": s.text, "done": bool(st.get("done")), "value": st.get("value") or None,
+        skipped = bool(measure) and not (st.get("value") or "").strip() and bool(st.get("skipped") or st.get("done"))
+        rows.append({"n": i, "text": s.text, "done": bool(st.get("done")) and not skipped, "skipped": skipped,
+                     "value": st.get("value") or None,
                      "measure": measure, "ok": in_norm(measure, st.get("value") or "") if st.get("value") else None,
                      "manual": s.manual, "pdf_page": s.pdf_page})
     ids = []
     measured = [r for r in rows if r["value"]]
     bad = [r for r in measured if r["ok"] is False]
+    skipped = [r for r in rows if r["skipped"]]
     ids.append(store.add_entry(vid, "defect", f"Дефектовка: {fault}",
-                               f"Замеров: {len(measured)}, вне нормы: {len(bad)}", {"steps": rows},
+                               f"Замеров: {len(measured)}, вне нормы: {len(bad)}"
+                               + (f", пропущено: {len(skipped)}" if skipped else ""), {"steps": rows},
                                work_id=work_id, session_id=work.state.session_id))
+    if skipped:  # the mechanic went on without a measurement: allowed, but the chief mechanic should see it
+        store.add_dispute("measure_skipped", "Пропущены замеры: " + "; ".join(
+            f"шаг {r['n']} — {(r['measure'] or {}).get('name') or r['text'][:60]}" for r in skipped),
+            vid, work_id, {"steps": skipped})
     done = [r["text"] for r in rows if r["done"]]
     if done:
         ids.append(store.add_entry(vid, "repair", "Выполненные работы", "\n".join(done),

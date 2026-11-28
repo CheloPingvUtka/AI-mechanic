@@ -30,7 +30,7 @@ create index if not exists works_vehicle on works(vehicle_id, status);
 """
 BOOK_KINDS = ("diagnosis", "recheck", "fault", "defect", "repair", "recommendation", "ticket", "note")
 DISPUTE_KINDS = ("unverified_numbers", "ticket_rejected", "low_confidence", "fuel_mismatch",
-                 "contradiction", "photo_mismatch")
+                 "contradiction", "photo_mismatch", "measure_skipped")
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
