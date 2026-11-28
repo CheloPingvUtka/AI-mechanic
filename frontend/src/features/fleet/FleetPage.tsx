@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { matches } from "../../lib/search";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, BookOpen, Bus, Car, Loader2, Search, Truck } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -21,8 +22,8 @@ export default function FleetPage() {
 
   const stateLabel = { quarantine: t("state.quarantine", "Карантин"), attention: t("state.attention", "Внимание"), normal: t("state.normal", "Норма") };
   const count = (s: FleetState) => fleet.filter(v => v.state === s).length;
-  const q = query.trim().toLowerCase();
-  const list = q ? fleet.filter(v => [v.vehicle_id, v.garage_no, vehicleName(v), v.engine_model].join(" ").toLowerCase().includes(q))
+  const q = query.trim();
+  const list = q ? fleet.filter(v => matches(q, v.vehicle_id, v.garage_no, vehicleName(v), v.engine_model))
     : model ? fleet.filter(v => modelKey(v) === model) : null;
   const models = Object.values(fleet.reduce<Record<string, FleetVehicle[]>>((acc, v) => { (acc[modelKey(v)] ??= []).push(v); return acc; }, {}));
 

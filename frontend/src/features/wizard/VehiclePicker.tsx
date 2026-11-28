@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { matches } from "../../lib/search";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, Loader2, Search, Truck, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -22,8 +23,8 @@ export default function VehiclePicker({ fleet, onPick, onResume }: {
   const stateLabel = { quarantine: t("state.quarantine", "Карантин"), attention: t("state.attention", "Внимание"), normal: t("state.normal", "Норма") };
   // one card per check (the newest work; older duplicates come from before works were reused)
   const resumable = (works ?? []).filter((w, i, all) => all.findIndex(x => x.vehicle_id === w.vehicle_id && x.session_id === w.session_id) === i);
-  const q = query.trim().toLowerCase().replace(/\s+/g, "");
-  const found = q ? fleet.filter(v => [v.vehicle_id, v.garage_no, vehicleName(v)].join(" ").toLowerCase().replace(/\s+/g, "").includes(q)) : null;
+  const q = query.trim();
+  const found = q ? fleet.filter(v => matches(q, v.vehicle_id, v.garage_no, vehicleName(v), v.engine_model)) : null;
   // the server's order is already by risk; the stable sort only puts quarantine before attention
   const attention = fleet.filter(v => v.state !== "normal").sort((a, b) => RISK[a.state] - RISK[b.state]);
 
