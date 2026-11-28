@@ -12,13 +12,13 @@
 |---|---|---|
 | POST | `/work` `{vehicle_id, session_id, lang}` | начать работу по проверке → `{work_id}`; план строится в фоне. Если по этой проверке уже есть незавершённая работа на том же языке с планом по текущим правилам — возвращается она (повторно не платим) |
 | POST | `/work/{id}/rebuild` | собрать план заново, если `plan.status = failed` (старые отметки сбрасываются) |
-| GET | `/work?status=active[&vehicle_id=]` | незавершённые работы: `[{id, vehicle_id, session_id, status, lang, created_at, updated_at, diagnosis, steps_total, steps_done, stage}]` |
+| GET | `/work?status=active[&vehicle_id=]` | незавершённые работы: `[{id, vehicle_id, session_id, status, lang, created_at, updated_at, diagnosis, steps_total, steps_done, step_at, stage}]` (`step_at` — номер шага, на котором остановились) |
 | GET | `/work/{id}` | всё, чтобы продолжить: `{work_id, vehicle_id, session_id, status, lang, plan, progress, diagnosis, chat, created_at, updated_at}` |
 | GET | `/work/{id}/stream` | SSE: `plan` (снимок), `thinking`/`tool`/`tool_result`, `done` |
 | PUT | `/work/{id}/progress` | сохранить прогресс механика (см. ниже); вызывать при каждом изменении (с задержкой ~1 с) |
 | POST | `/work/{id}/finish` | завершить диагностику: в сервисную книжку пишутся замеры против нормы, выполненные проверки с чек-листом, рекомендации → `{entries: [id…]}` |
 
-`progress`: `{"steps": {"<step id>": {"done": true, "value": "4.5"}}, "checks": {"<item id>": true}, "stage": "prep"|"work"|"check"|"after"}`. `checks` — галочки в списках подготовки (tools, materials, safety, disassembly, prep) и проверки качества (quality).
+`progress`: `{"steps": {"<step id>": {"done": true, "value": "4.5"}}, "checks": {"<item id>": true}, "stage": "prep"|"work"|"check"|"after", "step": <id шага, на котором механик>}`. Продолженная работа открывается на `step`. `checks` — галочки в списках подготовки (tools, materials, safety, disassembly, prep) и проверки качества (quality).
 
 `chat` в `/work/{id}`: `[{role: "user", text, images: <count>}, {role: "assistant", text, sources, ticket, cost}]` — показать прошлую переписку при возврате к работе.
 

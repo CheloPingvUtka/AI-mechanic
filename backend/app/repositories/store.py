@@ -124,9 +124,11 @@ def list_works(vehicle_id: str | None = None, status: str | None = None) -> list
         data = json.loads(row.pop("data"))
         plan = data.get("plan") or {}
         progress = data.get("progress") or {}
-        done = sum(1 for s in plan.get("steps", []) if (progress.get("steps") or {}).get(str(s["id"]), {}).get("done"))
-        row.update(diagnosis=data.get("diagnosis"), steps_total=len(plan.get("steps", [])), steps_done=done,
-                   stage=progress.get("stage"))
+        steps = plan.get("steps", [])
+        done = sum(1 for s in steps if (progress.get("steps") or {}).get(str(s["id"]), {}).get("done"))
+        at = next((i for i, s in enumerate(steps, 1) if s["id"] == progress.get("step")), None)
+        row.update(diagnosis=data.get("diagnosis"), steps_total=len(steps), steps_done=done, step_at=at,
+                   stage=progress.get("stage"), rules=data.get("rules"))
         out.append(row)
     return out
 

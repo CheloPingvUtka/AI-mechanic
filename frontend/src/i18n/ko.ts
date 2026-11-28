@@ -387,7 +387,8 @@ const ko = {
     allOk: "모든 차량이 정상이에요",
     search: "번호판 또는 차고 번호",
     continue: "계속하기",
-    steps: "단계: {{total}}개 중 {{done}}개",
+    steps: "완료한 단계: {{total}}개 중 {{done}}개",
+    at: "지금 {{n}}단계",
     title: "작업 중",
   },
 };

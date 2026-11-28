@@ -5,11 +5,12 @@ import type { AgentEvent, Assessment, Book, ChatReply, Dispute, FleetVehicle, Ma
 const base = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/$/, "");
 export const apiUrl = (path: string) => base + path;
 
-async function request<T>(path: string, body?: unknown, method = "POST"): Promise<T> {
+async function request<T>(path: string, body?: unknown, method = "POST", keepalive = false): Promise<T> {
   const response = await fetch(base + path, body === undefined ? undefined : {
     method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    keepalive,  // a save sent while the page is being closed still reaches the server
   });
   if (!response.ok) {
     const data = await response.json().catch(() => null);
@@ -29,7 +30,7 @@ export const api = {
     request<Assessment>("/diagnostics", { vehicle_id, session_id }),
   activeWorks: () => request<WorkSummary[]>("/work?status=active"),
   work: (id: string) => request<WorkSnapshot>(`/work/${id}`),
-  saveProgress: (id: string, progress: WorkProgress) => request<unknown>(`/work/${id}/progress`, progress, "PUT"),
+  saveProgress: (id: string, progress: WorkProgress) => request<unknown>(`/work/${id}/progress`, progress, "PUT", true),
   finishWork: (id: string) => request<{ entries: number[] }>(`/work/${id}/finish`, {}),
   rebuildWork: (id: string) => request<unknown>(`/work/${id}/rebuild`, {}),
   book: (vehicleId: string) => request<Book>(`/book/${encodeURIComponent(vehicleId)}`),

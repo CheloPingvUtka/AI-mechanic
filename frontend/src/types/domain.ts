@@ -111,6 +111,7 @@ export interface WorkProgress {
   steps: Record<string, { done: boolean; value: string; skipped?: boolean }>;
   checks: Record<string, boolean>;
   stage: Stage | null;
+  step?: number | null;  // id of the step the mechanic is on: a resumed work opens there
 }
 
 /** GET /work?status=active: unfinished repairs. */
@@ -122,6 +123,7 @@ export interface WorkSummary {
   diagnosis: Diagnosis | null;
   steps_total: number;
   steps_done: number;
+  step_at: number | null;  // 1-based number of the step the mechanic stopped at (stage «Шаги»)
   stage: Stage | null;
   updated_at: number;
 }

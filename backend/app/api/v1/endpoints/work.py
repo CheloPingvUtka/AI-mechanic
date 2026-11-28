@@ -32,11 +32,15 @@ class Progress(BaseModel):
     steps: dict[str, dict] = Field(default_factory=dict, description="{step_id: {done, value}}")
     checks: dict[str, bool] = Field(default_factory=dict, description="{item_id: ticked} for prep/quality lists")
     stage: Literal["prep", "work", "check", "after"] | None = None
+    step: int | None = Field(None, description="id шага, на котором механик: продолженная работа открывается на нём")
 
 
 @router.get("", summary="Сохранённые работы по проверке (status=active — незавершённые)")
 def list_works(vehicle_id: str | None = None, status: Literal["active", "done", "chat"] | None = None):
-    return store.list_works(vehicle_id, status)
+    works = store.list_works(vehicle_id, status)
+    if status == "active":  # unfinished works with a plan of the old rules (repair steps) are not offered to continue
+        works = [w for w in works if w["rules"] == plan_service.PLAN_RULES]
+    return works
 
 
 @router.get("/{work_id}", summary="Работа целиком: план диагностики, отметки, чат — чтобы продолжить")

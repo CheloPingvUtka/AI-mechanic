@@ -387,7 +387,8 @@ const uz = {
     allOk: "Barcha mashinalar me’yorida",
     search: "Davlat raqami yoki garaj №",
     continue: "Davom ettirish",
-    steps: "Qadamlar: {{total}} tadan {{done}} ta",
+    steps: "Bajarilgan qadamlar: {{total}} tadan {{done}} ta",
+    at: "hozir {{n}}-qadam",
     title: "Ishda",
   },
 };

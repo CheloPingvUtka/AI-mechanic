@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, Loader2, Search, Truck, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, STATE_BADGE, useLoad, vehicleName } from "../../lib/api";
+import { flushProgress } from "../../lib/progress";
 import type { FleetVehicle, WorkSummary } from "../../types/domain";
 import LicensePlate, { parseVehicleId } from "../../components/ui/LicensePlate";
 import { faultTitle } from "../session/ResultCard";
@@ -12,12 +13,15 @@ const RISK = { quarantine: 0, attention: 1, normal: 2 };
 
 /** Wizard screen 1: repairs in progress, then the vehicles that need attention (riskiest first). Search finds any other one;
  *  the whole fleet by model lives in «Автопарк». */
+// The list of works waits for progress saves still on their way (the mechanic has just left a work).
+const loadWorks = () => flushProgress().then(api.activeWorks);
+
 export default function VehiclePicker({ fleet, onPick, onResume }: {
   fleet: FleetVehicle[] | undefined | null; onPick: (v: FleetVehicle) => void; onResume: (w: WorkSummary) => void;
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
-  const { data: works } = useLoad(api.activeWorks);
+  const { data: works } = useLoad(loadWorks);
   if (!fleet) return <p className="wizard-loading"><Loader2 size={22} className="spin"/>{t("loadingFleet", "Загружаем автопарк…")}</p>;
 
   const stateLabel = { quarantine: t("state.quarantine", "Карантин"), attention: t("state.attention", "Внимание"), normal: t("state.normal", "Норма") };
@@ -51,7 +55,8 @@ export default function VehiclePicker({ fleet, onPick, onResume }: {
         <b>{faultTitle(t, w.diagnosis?.anomaly_type ?? null, w.diagnosis?.anomaly_title)}</b>
         {w.steps_total > 0 && <>
           <span className="resume-bar"><i style={{ width: `${Math.round(100 * w.steps_done / w.steps_total)}%` }}/></span>
-          <span className="resume-count">{t("works.steps", "Шаги: {{done}} из {{total}}", { done: w.steps_done, total: w.steps_total })}</span>
+          <span className="resume-count">{t("works.steps", "Сделано шагов: {{done}} из {{total}}", { done: w.steps_done, total: w.steps_total })}
+            {w.step_at && w.stage === "work" ? ` · ${t("works.at", "сейчас шаг {{n}}", { n: w.step_at })}` : ""}</span>
         </>}
         <span className="resume-go">{t("works.continue", "Продолжить")}<ArrowRight size={22}/></span>
       </button>)}</div>

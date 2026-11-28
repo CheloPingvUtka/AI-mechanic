@@ -52,7 +52,6 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   const plan = usePlan(s.workId);
   const phase = plan.stage, setPhase = plan.setStage;
   const [viewer, setViewer] = useState<PageRef | null>(null);
-  const [stepIndex, setStepIndex] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
   const [heard, setHeard] = useState("");
   const [autoSpeak, setAutoSpeak] = useState(false);
@@ -62,7 +61,8 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   const openChat = () => { if (!chatCol) setChatOpen(true); };
   const dockChat = !chatCol && !!vehicle;  // mic + "ask AI" under the screen; not on the vehicle list
   const steps = plan.plan?.steps ?? [];
-  const at = Math.min(stepIndex, Math.max(steps.length - 1, 0));
+  const at = Math.min(plan.at, Math.max(steps.length - 1, 0));
+  const setStepIndex = plan.setAt;
   const step = phase === "work" ? steps[at] : undefined;
   const lastStep = at >= steps.length - 1;
   const aftercare = plan.plan?.aftercare ?? [];
@@ -87,11 +87,6 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   }, [focusNote, plan.loaded, !!plan.plan]);  // eslint-disable-line react-hooks/exhaustive-deps
   // The check result comes when the mechanic asks for it (after the recording on the stand), never by itself.
   const diagnose = () => void s.runDiagnosis().then(r => { if (r && speakOn) void voice.speak(verdictLine(t, r)); });
-  // Open the first step not done yet (a resumed repair continues where it stopped).
-  useEffect(() => {
-    const i = steps.findIndex(x => !plan.stepState(x.id).done);
-    setStepIndex(Math.max(i, 0));
-  }, [s.workId, steps.length > 0]);  // eslint-disable-line react-hooks/exhaustive-deps
   // The agent knows where the mechanic is in the work ("explain step 3").
   s.context.current = screen === "work" && plan.plan ? { stage: phase, step_index: step ? at + 1 : null, step_text: step?.text ?? "" } : null;
   // Nothing is read aloud unless voice mode or «Озвучка» is on; switching off silences what is playing.

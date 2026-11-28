@@ -89,6 +89,18 @@ def test_opening_the_same_check_again_reuses_its_work(monkeypatch):
     plan_service.WORKS.clear()
 
 
+def test_works_list_shows_where_the_mechanic_stopped():
+    state = agent_service.AgentState(vehicle=vehicle(), session_id="S-0005", conversation_id="w6")
+    first, second = PlanItem(text="Осмотр", preliminary=False), PlanItem(text="Замер", preliminary=False)
+    state.plan = WorkPlan(status="ready", steps=[first, second])
+    agent_service.save_conversation("w6", agent_service.Conversation(state=state), status="active")
+    store.update_work_data("w6", progress={"steps": {str(first.id): {"done": True}}, "checks": {}, "stage": "work",
+                                           "step": second.id})
+    (w,) = store.list_works(status="active")
+    assert (w["steps_done"], w["steps_total"], w["step_at"], w["stage"]) == (1, 2, 2, "work")
+    agent_service.CONVERSATIONS.clear()
+
+
 def test_chat_sees_the_work_plan_steps():
     plan = WorkPlan(status="ready", steps=[PlanItem(text="Прогреть двигатель и прослушать", preliminary=False, pdf_page=142),
                                            PlanItem(text="Проверить подачу масла", preliminary=False, pdf_page=91)])
