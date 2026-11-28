@@ -60,6 +60,7 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   const speakOn = autoSpeak || voice.handsFree;
   const chatCol = useWide() && !!vehicle && screen !== "vehicle";
   const openChat = () => { if (!chatCol) setChatOpen(true); };
+  const dockChat = !chatCol && !!vehicle;  // mic + "ask AI" under the screen; not on the vehicle list
   const steps = plan.plan?.steps ?? [];
   const at = Math.min(stepIndex, Math.max(steps.length - 1, 0));
   const step = phase === "work" ? steps[at] : undefined;
@@ -95,7 +96,9 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   s.context.current = screen === "work" && plan.plan ? { stage: phase, step_index: step ? at + 1 : null, step_text: step?.text ?? "" } : null;
   // Nothing is read aloud unless voice mode or «Озвучка» is on; switching off silences what is playing.
   // (Answers that arrive later check it then, not when the question was asked.)
-  useEffect(() => voice.setOutput(speakOn), [speakOn]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => voice.setOutput(speakOn), [speakOn]);
+  // Voice is for working on a vehicle: the vehicle list has no mic, so hands-free stops when it is left.
+  useEffect(() => { if (!vehicle && voice.handsFree) void voice.toggleHandsFree(); }, [vehicle?.vehicle_id]);  // eslint-disable-line react-hooks/exhaustive-deps  // eslint-disable-line react-hooks/exhaustive-deps
   // Voice mode: "Думаю…" as soon as the agent starts, "Ещё чуть-чуть…" now and then, until the answer.
   useEffect(() => { if (speakOn) void voice.warmUp(); }, [speakOn, s.lang]);  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => voice.waiting(speakOn && s.busy), [speakOn, s.busy]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -138,11 +141,6 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
     const cmd = parseCommand(text);
     if (cmd && cmd.type !== "stop") setChatOpen(false);  // show what the command did
     if (cmd?.type === "stop") { voice.stopSpeaking(); return; }
-    if (cmd?.type === "number" && screen === "vehicle") {
-      const match = (fleet ?? []).find(v => v.vehicle_id.includes(cmd.value) || v.garage_no.includes(cmd.value));
-      if (match) go("result", match.vehicle_id);
-      return;
-    }
     if (cmd?.type === "number" && screen === "work" && step?.measure) {
       plan.setStep(step.id, { value: cmd.value, done: cmd.done || plan.stepState(step.id).done });
       return;
@@ -266,16 +264,15 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
         </>}
       </main>
 
-      {(!chatCol || primary || back) && <div className="wizard-dock">
-        {!chatCol && <div className="dock-chat">
+      {(dockChat || primary || back) && <div className="wizard-dock">
+        {dockChat && <div className="dock-chat">
           <MicButton voice={voice}/>
-          {vehicle ? <button className={`dock-ask ${unread ? "unread" : ""}`} onClick={openChat}>
-              {s.busy ? <Loader2 size={24} className="spin"/> : <MessageCircle size={24}/>}
-              <VoiceLine voice={voice} heard={heard}
-                title={s.busy ? t("wizard.aiAnswering", "ИИ отвечает…") : unread ? t("wizard.aiNew", "Есть ответ ИИ — открыть") : t("wizard.ask", "Спросить ИИ")}
-                hint={t("wizard.askHint", "Скажите или напишите вопрос")}/>
-            </button>
-            : <VoiceLine voice={voice} heard={heard}/>}
+          <button className={`dock-ask ${unread ? "unread" : ""}`} onClick={openChat}>
+            {s.busy ? <Loader2 size={24} className="spin"/> : <MessageCircle size={24}/>}
+            <VoiceLine voice={voice} heard={heard}
+              title={s.busy ? t("wizard.aiAnswering", "ИИ отвечает…") : unread ? t("wizard.aiNew", "Есть ответ ИИ — открыть") : t("wizard.ask", "Спросить ИИ")}
+              hint={t("wizard.askHint", "Скажите или напишите вопрос")}/>
+          </button>
         </div>}
         {(primary || back) && <div className="dock-actions">
           {back && <button className="button button-light dock-back" onClick={back} aria-label={t("wizard.prev", "Назад")}>
