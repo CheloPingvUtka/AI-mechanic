@@ -314,7 +314,7 @@ const ru = {
     photo: "Фото",
     placeholder: "Что увидели или сделали?",
     save: "Сохранить",
-    short: "Книжка",
+    short: "Сервиска",
     title: "Сервисная книжка",
     kind: {
       defect: "Замеры",
