@@ -36,7 +36,7 @@ VOICE_SAMPLES = {
 FLEET, DAYS_BETWEEN_CHECKS, QUESTIONS_PER_CHECK = 50, 14, 2.5
 DAYS_PER_MONTH = 365 / 12
 
-PLAN_TITLE = "Фоновый рабочий план (подготовка, шаги, рисунки)"
+PLAN_TITLE = "Фоновый план диагностики (подготовка, шаги проверки, подбор рисунков)"
 CATEGORIES = [
     ("Выбор инструмента и поиск по руководству", lambda n: n.startswith("llm:") and n not in
      ("llm:answer", "llm:fix") and "create_ticket" not in n),
@@ -68,9 +68,9 @@ def pick_vehicles():
     return anomaly, first["normal"], first["check_failed"]
 
 
-async def run_turns(service: AgentService, vehicle_id: str, session_id: str, messages: list[str]):
-    """Returns [(turn label, steps, seconds)] for one conversation."""
-    conv, out = None, []
+async def run_turns(service: AgentService, vehicle_id: str, session_id: str, messages: list[str], conv: str | None = None):
+    """Returns [(turn label, steps, seconds)] for one conversation (the work's own, as in the UI, when given)."""
+    out = []
     for label, text in messages:
         t0 = time.perf_counter()
         reply = await service.chat(ChatRequest(
@@ -98,13 +98,15 @@ def usd(x: float) -> str:
 async def measure():
     anomaly, normal, failed = pick_vehicles()
     service = AgentService()
+    # As in the UI: the plan is built in the background and the chat is the same conversation (it sees the plan).
+    plan_ids = [await plan_service.start(v.vehicle_id, s.session_id) for v, s in anomaly]
     jobs = [run_turns(service, v.vehicle_id, s.session_id,
                       [("explain", f"Объясни результат проверки {s.session_id}")]
                       + [("question", q) for q in QUESTIONS]
-                      + [("ticket", "Создай заявку на дефектовку")]) for v, s in anomaly]
+                      + [("ticket", "Создай заявку на дефектовку")], conv=work_id)
+            for (v, s), work_id in zip(anomaly, plan_ids)]
     jobs += [run_turns(service, v.vehicle_id, s.session_id, [(kind, f"Объясни результат проверки {s.session_id}")])
              for kind, (v, s) in (("explain_normal", normal), ("explain_failed", failed))]
-    plan_ids = [await plan_service.start(v.vehicle_id, s.session_id) for v, s in anomaly]
     runs = await asyncio.gather(*jobs)
     await asyncio.gather(*(plan_service.WORKS[i].task for i in plan_ids))
     plan_costs = [plan_service.WORKS[i].cost_usd for i in plan_ids]
@@ -164,7 +166,8 @@ def report(anomaly, normal, failed, runs, plan_costs, voice, index_seconds: floa
     lines = [
         "# Калькулятор стоимости агента «Цифровой механик»",
         "",
-        f"Замер {date.today():%d.%m.%Y}, модель `{settings.llm_model}` через OpenRouter. "
+        f"Замер {date.today():%d.%m.%Y}, модель `{settings.llm_model}` через OpenRouter, рассуждения (reasoning effort) "
+        f"`{settings.llm_reasoning_effort or 'выкл.'}`. "
         "Стоимость — фактически списанная OpenRouter (`usage.cost`) за реальные прогоны агента, а не оценка по тарифу."
         + (f" Справочно: цена в каталоге OpenRouter на дату замера ${price[0]:.3f} за 1 млн входных и "
            f"${price[1]:.3f} за 1 млн выходных токенов; запросы обслуживают разные провайдеры по своим ценам, "
@@ -183,7 +186,7 @@ def report(anomaly, normal, failed, runs, plan_costs, voice, index_seconds: floa
         "",
         "## Один сценарий с отклонением: разбивка по шагам",
         "",
-        (f"Среднее на сценарий из {n_anomaly} прогонов (объяснение + 2 вопроса + заявка + рабочий план в фоне). "
+        (f"Среднее на сценарий из {n_anomaly} прогонов (объяснение + 2 вопроса + заявка + план диагностики в фоне; чат идёт в той же работе и видит план). "
          "В пересчёте на парк ниже — 2,5 вопроса, поэтому сумма там немного больше."),
         "",
         "| Шаг | Стоимость | Доля |",
