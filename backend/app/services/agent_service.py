@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from app.agent import figures
 from app.agent.meter import TokenMeter
 from app.agent.checks import answer_problems, render_citations
-from app.agent.plan import WorkPlan
+from app.agent.plan import PlanItem, WorkPlan, results, results_line
 from app.agent.tools import TOOLS, AgentState, run_tool
 from app.domain.diagnostic_rules import CONFIDENCE_MIN, URGENCY_MEANING
 from app.integrations.llm_client import LLMClient
@@ -58,6 +58,7 @@ SYSTEM_PROMPT = """Ты — «Цифровой механик», помощни�
    - signal_quality=warning: всегда предупреди, что запись с помехами и уверенность снижена; заявка только после того, как механик нажмёт кнопку «Подтверждаю, создать заявку» (словами в чате подтвердить нельзя).
 6. «Запрещено выпускать в рейс / эксплуатация запрещена» пиши только если фрагмент руководства прямо это говорит, со ссылкой. Иначе формулируй как рекомендацию. Приоритеты: high — {u_high}; medium — {u_medium}; low — {u_low}.
 7. create_ticket вызывай только по команде механика. Нужна процедура именно того узла, на который указывает тип неисправности; процедура по смежному симптому (например, «двигатель работает неустойчиво» вместо системы зажигания) не годится. Если такой процедуры нет — заявку не создавай: объясни, что в руководстве на этот двигатель нет инструкции по этой неисправности, и дай текст рекомендации на дефектовку с результатом проверки. Если в диагнозе есть ticket_blocked_reason или create_ticket вернул error — объясни причину простыми словами. Если руководство прямо запрещает эксплуатацию при этой неисправности — передай цитату в operation_ban.
+   Если ниже есть план диагностики, заявку собирай из него: operations — те «Рекомендации после диагностики», которые подходят по результатам проверок механика (замер вне нормы — соответствующий ремонт); если проверок ещё не было или замеры в норме — те, что следуют из результата акустической проверки, а в ответе скажи, что проверки по плану неисправность пока не подтвердили. Работы — короткими пунктами, без шагов; запрет эксплуатации — не работа, он только в operation_ban. references — ref и quote этих рекомендаций (quote — как в плане, дословно). Результаты замеров в conclusion не пиши: они добавляются в заявку автоматически.
 8. Объём ответа.
    - Полный разбор — только когда механик просит объяснить результат проверки («Объясни результат проверки …») или просит подробно. Пиши для механика, не для программиста: никаких названий полей и служебных значений (status, anomaly, score, confidence, signal_quality, ticket_blocked_reason, urgency, good/warning, high/medium/low) — только простые слова («отклонение», «уверенность 71 %», «приоритет высокий»). Подробные цифры проверки (оценка отклонения, порог, качество записи, версия модели) механик видит сам в «Подробностях проверки» — не пересказывай их.
      Первая строка — вердикт: что, скорее всего, неисправно и что делать с машиной (по приоритету). Дальше ровно эти разделы, каждый коротко:
@@ -211,16 +212,26 @@ def restore_conversation(conv_id: str, catalog: JsonVehicleCatalog) -> Conversat
     return conv
 
 
-def plan_brief(plan: WorkPlan | None) -> str:
-    """The steps the mechanic sees on the Работа screen, so chat answers keep to them."""
+def plan_brief(plan: WorkPlan | None, progress: dict | None = None) -> str:
+    """The steps the mechanic sees on the Работа screen (so chat answers keep to them), what he found, and the
+    recommendations after the diagnosis with their manual fragments (what a defect ticket is made of)."""
     if plan is None or not plan.steps:
         return ""
     lines = [f"{i}. {s.text[:140]}" + (f" (стр. {s.pdf_page})" if s.pdf_page else "") for i, s in enumerate(plan.steps[:25], 1)]
     status = " (план ещё собирается)" if plan.status == "building" else ""
-    return f"\n\nПлан диагностики во вкладке «Работа»{status}:\n" + "\n".join(lines)
+    text = f"\n\nПлан диагностики во вкладке «Работа»{status}:\n" + "\n".join(lines)
+    if checked := results_line(results(plan, progress)):
+        text += f"\n{checked}"
+    if plan.aftercare:
+        def source(a: PlanItem) -> str:
+            quote = (a.quote or "")[:110].rsplit(" ", 1)[0] if len(a.quote or "") > 110 else (a.quote or "")
+            return f' [ref={a.ref} quote="{quote}"]' if a.ref and quote else " [не из руководства]"
+        text += "\nРекомендации после диагностики (из них — работы заявки на дефектовку):\n" + "\n".join(
+            f"- {a.text[:160]}{source(a)}" for a in plan.aftercare[:12])
+    return text
 
 
-def system_prompt(vehicle: Vehicle, session_id: str, plan: WorkPlan | None = None) -> str:
+def system_prompt(vehicle: Vehicle, session_id: str, plan: WorkPlan | None = None, progress: dict | None = None) -> str:
     history = "\n".join(
         f"- {s.session_id} {s.checked_at:%d.%m.%Y}: {s.status}"
         + (f", {s.anomaly_type} {s.anomaly_title}, score {s.anomaly_score}" if s.anomaly_type else "")
@@ -242,7 +253,7 @@ def system_prompt(vehicle: Vehicle, session_id: str, plan: WorkPlan | None = Non
         u_high=URGENCY_MEANING["high"],
         u_medium=URGENCY_MEANING["medium"],
         u_low=URGENCY_MEANING["low"],
-    ) + plan_brief(plan)
+    ) + plan_brief(plan, progress)
 
 
 class AgentService:
@@ -303,7 +314,8 @@ class AgentService:
         state.warning_confirmed = payload.confirm_warning
         state.contradictions, state.photo_check = [], None
         if conv.messages and conv.messages[0].get("role") == "system":  # current rules, session and tickets
-            conv.messages[0] = {"role": "system", "content": system_prompt(state.vehicle, state.session_id, state.plan)}
+            conv.messages[0] = {"role": "system", "content": system_prompt(
+                state.vehicle, state.session_id, state.plan, store.work_progress(state.conversation_id) if state.plan else None)}
         text = payload.message
         if payload.confirm_warning:
             text += "\n[Механик прочитал предупреждение о качестве записи и подтверждает создание заявки.]"

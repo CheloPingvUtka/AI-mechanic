@@ -390,3 +390,5 @@
 .dispute-banner{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:14px;background:#fff7e5;border:2px solid #e68135;color:#5c3d08}.dispute-banner>svg{flex:none;color:#b06f00}.dispute-banner>div{flex:1;min-width:0;display:grid;gap:6px}.dispute-banner b{font-size:17px}.dispute-banner p{margin:0;font-size:15px;line-height:1.45}.dispute-banner>button{all:unset;cursor:pointer;flex:none;width:44px;height:44px;display:grid;place-items:center;border-radius:10px}
 .step-progress span.skipped{background:#f2b33d}.step-card.skipped{border-color:#f3c96b}.step-skipped{display:flex;align-items:center;gap:8px;margin:6px 0 0;padding:8px 10px;border-radius:10px;background:#fff4dc;color:#8a5a00;font-weight:650;font-size:15px}.summary-list button.skipped svg{color:#d08a00}.summary-list em.skipped,.tl-rows em.skipped{color:#8a5a00;background:#fff4dc}
 .tl-rows li.skipped svg{color:#d08a00}
+/* Ticket: the conclusion, then the mechanic's checks on their own line */
+.ticket-conclusion{white-space:pre-line}

@@ -217,3 +217,58 @@ def update_plan(plan: WorkPlan, hits: dict, section: str, preliminary: bool, ite
     current.extend(i for i in accepted if i.text.lower() not in known)
     plan.version += 1
     return {"accepted": len(accepted), "rejected": rejected}
+
+
+# --- the mechanic's results against the plan (service book, defect ticket, chat) ---------------------
+
+def in_norm(measure: dict | None, value: str) -> bool | None:
+    try:
+        v = float(str(value).replace(",", "."))
+    except ValueError:
+        return None
+    if not measure:
+        return None
+    return (measure.get("min") is None or v >= measure["min"]) and (measure.get("max") is None or v <= measure["max"])
+
+
+def results(plan: WorkPlan, progress: dict | None) -> list[dict]:
+    """Each step with what the mechanic did: done, skipped (went on without its measurement), value against the norm."""
+    states = (progress or {}).get("steps") or {}
+    rows = []
+    for i, s in enumerate(plan.steps, 1):
+        st = states.get(str(s.id)) or {}
+        value = (st.get("value") or "").strip()
+        measure = asdict(s.measure) if s.measure else None
+        skipped = bool(measure) and not value and bool(st.get("skipped") or st.get("done"))
+        rows.append({"n": i, "text": s.text, "done": bool(st.get("done")) and not skipped, "skipped": skipped,
+                     "value": value or None, "measure": measure, "ok": in_norm(measure, value) if value else None,
+                     "manual": s.manual, "pdf_page": s.pdf_page})
+    return rows
+
+
+def _norm(m: dict) -> str:
+    lo, hi = m.get("min"), m.get("max")
+    if lo is not None and hi is not None:
+        return f"{lo:g}…{hi:g}"
+    return f"≤ {hi:g}" if hi is not None else f"≥ {lo:g}" if lo is not None else ""
+
+
+def results_line(rows: list[dict]) -> str:
+    """The checks in one line, for the defect ticket (its contract has no field for them) and the chat."""
+    if not any(r["done"] or r["skipped"] or r["value"] for r in rows):
+        return ""
+    measured = []
+    for r in rows:
+        if r["value"]:
+            m = r["measure"] or {}
+            norm = _norm(m)
+            measured.append(f"{m.get('name') or r['text'][:60]} {r['value']} {m.get('unit', '')}".rstrip()
+                            + (f" (норма {norm})" if norm else "")
+                            + (" — вне нормы" if r["ok"] is False else " — в норме" if r["ok"] else ""))
+    done = sum(1 for r in rows if r["done"] or r["value"])
+    text = f"Проверки по плану: выполнено {done} из {len(rows)}."
+    if measured:
+        text += " Замеры: " + "; ".join(measured) + "."
+    if skipped := [str(r["n"]) for r in rows if r["skipped"]]:
+        text += " Без замера: шаг " + ", ".join(skipped) + "."
+    return text

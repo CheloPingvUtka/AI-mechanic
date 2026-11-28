@@ -75,6 +75,34 @@ async def test_ticket_created_with_verified_reference(state):
     assert (sent.anomaly_type, sent.urgency, sent.references[0].pdf_page) == ("F08", "medium", 41)
 
 
+async def test_ticket_carries_the_mechanics_checks_and_the_chat_sees_the_recommendations(state):
+    from app.agent.plan import Measure, PlanItem, WorkPlan
+    from app.repositories import store
+
+    look = PlanItem(text="Осмотреть крышки", preliminary=False)
+    torque = PlanItem(text="Проверить момент", preliminary=False, measure=Measure("Момент", "Н·м", 421, 461))
+    gap = PlanItem(text="Замерить зазор", preliminary=False, measure=Measure("Зазор", "мм", None, 0.5))
+    fix = PlanItem(text="Затянуть болты крышек", preliminary=False, ref="yamz236_rk:41",
+                   quote="Затяжку болтов крепления крышек производить с моментом 421-461 Н*м (43-47 кгс*м).")
+    state.plan = WorkPlan(status="ready", steps=[look, torque, gap], aftercare=[fix])
+    state.conversation_id = "w9"
+    agent_service.save_conversation("w9", agent_service.Conversation(state=state), status="active")
+    store.update_work_data("w9", progress={"steps": {str(look.id): {"done": True},
+                                                      str(torque.id): {"done": True, "value": "400"},
+                                                      str(gap.id): {"done": False, "skipped": True}}})
+
+    brief = agent_service.plan_brief(state.plan, store.work_progress("w9"))
+    assert "Проверки по плану: выполнено 2 из 3. Замеры: Момент 400 Н·м (норма 421…461) — вне нормы. Без замера: шаг 3." in brief
+    assert '- Затянуть болты крышек [ref=yamz236_rk:41 quote="Затяжку болтов крепления крышек производить с моментом' in brief
+
+    result = await create_ticket(state, "Ослаблены болты крышек", ["Затянуть болты моментом 421-461 Н*м"], [],
+                                 [{"ref": "yamz236_rk:41", "quote": "производить с моментом 421-461 Н*м"}])
+    assert "ticket_id" in result
+    assert FakeToir.sent[0].conclusion == ("Ослаблены болты крышек\nПроверки по плану: выполнено 2 из 3. Замеры: "
+                                          "Момент 400 Н·м (норма 421…461) — вне нормы. Без замера: шаг 3.")
+    agent_service.CONVERSATIONS.clear()
+
+
 @pytest.mark.parametrize(
     "refs,ops",
     [

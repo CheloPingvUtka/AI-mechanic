@@ -91,6 +91,12 @@ def load_work(work_id: str) -> dict | None:
     return row
 
 
+def work_progress(work_id: str | None) -> dict:
+    """What the mechanic ticked and measured in a work (empty when there is no such work)."""
+    row = load_work(work_id) if work_id else None
+    return (row or {}).get("data", {}).get("progress") or {}
+
+
 def update_work_data(work_id: str, **fields) -> None:
     """Merge top-level keys into a saved session's data (e.g. progress)."""
     row = load_work(work_id)

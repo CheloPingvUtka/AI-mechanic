@@ -8,7 +8,7 @@ import httpx
 from pydantic import ValidationError
 
 from app.agent.checks import numbers, quote_in, rounding_only
-from app.agent.plan import WorkPlan
+from app.agent.plan import WorkPlan, results, results_line
 from app.domain.diagnostic_rules import (
     OPERATION_BAN,
     URGENCY_MEANING,
@@ -147,7 +147,8 @@ TOOLS = [
             "description": (
                 "Создать заявку на дефектовку в ТОиР. Только по команде механика и только если найдена "
                 "процедура проверки/регулировки/ремонта именно этого узла в руководстве на этот двигатель. "
-                "Код неисправности, проверка и приоритет подставляются автоматически."
+                "Код неисправности, проверка, приоритет и результаты проверок механика по плану диагностики "
+                "подставляются автоматически."
             ),
             "parameters": {
                 "type": "object",
@@ -273,11 +274,13 @@ async def create_ticket(
         return {"error": "Заявка не создана: " + "; ".join(errors)}
 
     level = urgency(d.anomaly_type, d.anomaly_score, operation_banned=ban is not None)
+    # What the mechanic found by the diagnosis plan goes with the ticket (the ТОиР contract has no field for it).
+    checked = results_line(results(state.plan, store.work_progress(state.conversation_id))) if state.plan else ""
     payload = TicketCreate(
         vehicle_id=d.vehicle_id,
         session_id=d.session_id,
         anomaly_type=d.anomaly_type,
-        conclusion=conclusion,
+        conclusion=conclusion.strip() + (f"\n{checked}" if checked else ""),
         urgency=level,
         operations=operations,
         spare_parts=spare_parts,

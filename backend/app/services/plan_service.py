@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from app.agent import figures
 from app.agent.checks import rounding_only
 from app.agent.meter import TokenMeter
-from app.agent.plan import FINISH_PLAN, UPDATE_PLAN, PlanItem, WorkPlan, update_plan
+from app.agent.plan import FINISH_PLAN, UPDATE_PLAN, PlanItem, WorkPlan, results, update_plan
 from app.agent.tools import TOOLS, AgentState, log_check_disputes, run_tool
 from app.domain.diagnostic_rules import assess
 from app.integrations.llm_client import LLMClient, LLMError
@@ -297,35 +297,16 @@ async def _build(work: Work) -> None:
         work.emit({"type": "done", "cost_usd": round(work.cost_usd, 6), "tokens": meter.totals()})
 
 
-def in_norm(measure: dict | None, value: str) -> bool | None:
-    try:
-        v = float(str(value).replace(",", "."))
-    except ValueError:
-        return None
-    if not measure:
-        return None
-    return (measure.get("min") is None or v >= measure["min"]) and (measure.get("max") is None or v <= measure["max"])
-
-
 def finish(work_id: str) -> list[int]:
     """Closes a diagnosis: what was measured, which checks were done, and the recommendations go into the book."""
     work = get_work(work_id)
     if work is None:
         raise LookupError(f"Нет работы {work_id}")
-    saved = store.load_work(work_id)
-    progress = (saved or {}).get("data", {}).get("progress") or {}
-    states, checks = progress.get("steps") or {}, progress.get("checks") or {}
+    progress = store.work_progress(work_id)
+    checks = progress.get("checks") or {}
     plan, vid, d = work.plan, work.state.vehicle.vehicle_id, work.state.diagnosis
     fault = f"{d.anomaly_type} {d.anomaly_title}" if d and d.anomaly_type else "неисправность"
-    rows = []
-    for i, s in enumerate(plan.steps, 1):
-        st = states.get(str(s.id)) or {}
-        measure = asdict(s.measure) if s.measure else None
-        skipped = bool(measure) and not (st.get("value") or "").strip() and bool(st.get("skipped") or st.get("done"))
-        rows.append({"n": i, "text": s.text, "done": bool(st.get("done")) and not skipped, "skipped": skipped,
-                     "value": st.get("value") or None,
-                     "measure": measure, "ok": in_norm(measure, st.get("value") or "") if st.get("value") else None,
-                     "manual": s.manual, "pdf_page": s.pdf_page})
+    rows = results(plan, progress)
     ids = []
     measured = [r for r in rows if r["value"]]
     bad = [r for r in measured if r["ok"] is False]
