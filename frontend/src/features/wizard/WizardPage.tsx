@@ -77,6 +77,9 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
   }, [s.workId, steps.length > 0]);  // eslint-disable-line react-hooks/exhaustive-deps
   // The agent knows where the mechanic is in the work ("explain step 3").
   s.context.current = screen === "work" && plan.plan ? { stage: phase, step_index: step ? at + 1 : null, step_text: step?.text ?? "" } : null;
+  // Nothing is read aloud unless voice mode or «Озвучка» is on; switching off silences what is playing.
+  // (Answers that arrive later check it then, not when the question was asked.)
+  useEffect(() => voice.setOutput(speakOn), [speakOn]);  // eslint-disable-line react-hooks/exhaustive-deps
   // Voice mode: "Думаю…" as soon as the agent starts, "Ещё чуть-чуть…" now and then, until the answer.
   useEffect(() => { if (speakOn) void voice.warmUp(); }, [speakOn, s.lang]);  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => voice.waiting(speakOn && s.busy), [speakOn, s.busy]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -263,9 +266,9 @@ export default function WizardPage({ active = true }: { active?: boolean }) {
       </div>}
     </div>
 
-    {chatCol && vehicle && <ChatPanel s={s} engine={vehicle.engine_model} onOpen={setViewer} onSpeak={text => void voice.speak(text)} voice={voice} heard={heard}/>}
+    {chatCol && vehicle && <ChatPanel s={s} engine={vehicle.engine_model} onOpen={setViewer} onSpeak={text => void voice.speak(text, true)} voice={voice} heard={heard}/>}
     {chatOpen && !chatCol && vehicle && <div className="chat-sheet" role="dialog" aria-modal="true">
-      <ChatPanel s={s} engine={vehicle.engine_model} onOpen={setViewer} onSpeak={text => void voice.speak(text)} voice={voice} heard={heard}
+      <ChatPanel s={s} engine={vehicle.engine_model} onOpen={setViewer} onSpeak={text => void voice.speak(text, true)} voice={voice} heard={heard}
         onClose={() => setChatOpen(false)}/>
     </div>}
     {viewer && <PageViewer page={viewer} onClose={() => setViewer(null)}/>}

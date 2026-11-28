@@ -49,14 +49,14 @@ export function stripWake(text: string): string | null {
 
 // What the app says: "listen" when only the wake word was said; "start"/"wait" while the agent works,
 // so the mechanic knows it heard him and is busy.
-const FILLERS: Record<string, { listen: string[]; start: string[]; wait: string[] }> = {
-  ru: { listen: ["Слушаю.", "Да, слушаю."],
+const FILLERS: Record<string, { listen: string[]; start: string[]; wait: string[]; screen: string[] }> = {
+  ru: { listen: ["Слушаю.", "Да, слушаю."], screen: ["Ответ на экране."],
         start: ["Думаю.", "Минутку.", "Сейчас посмотрю.", "Секунду, ищу в руководстве."],
         wait: ["Ещё чуть-чуть.", "Почти готово.", "Ещё ищу, подождите.", "Сверяю с руководством."] },
-  uz: { listen: ["Eshitaman.", "Ha, eshitaman."],
+  uz: { listen: ["Eshitaman.", "Ha, eshitaman."], screen: ["Javob ekranda."],
         start: ["O‘ylayapman.", "Bir daqiqa.", "Hozir qarayman.", "Bir soniya, qo‘llanmadan qidiryapman."],
         wait: ["Yana biroz.", "Deyarli tayyor.", "Hali qidiryapman, kuting.", "Qo‘llanma bilan solishtiryapman."] },
-  ko: { listen: ["네, 듣고 있어요.", "네, 말씀하세요."],
+  ko: { listen: ["네, 듣고 있어요.", "네, 말씀하세요."], screen: ["답은 화면에 있어요."],
         start: ["생각하고 있어요.", "잠깐만요.", "지금 찾아볼게요.", "잠시만요, 설명서를 찾고 있어요."],
         wait: ["조금만 더요.", "거의 다 됐어요.", "아직 찾고 있어요, 기다려 주세요.", "설명서와 맞춰 보고 있어요."] },
 };
@@ -97,7 +97,9 @@ export function useVoice(lang: string, onText: (text: string) => void) {
   const [level, setLevel] = useState(0);
   const [error, setError] = useState("");
   const [awake, setAwake] = useState(false);  // the wake word was heard: follow-ups need no word for a while
-  const st = useRef({ manual: false, awakeUntil: 0, awakeTimer: 0, vad: null as MicVAD | null, loading: null as Promise<MicVAD | null> | null, listening: false,
+  // output: may the app speak by itself (voice mode or «Озвучка» on); gen: bumped by every new or stopped speech,
+  // so a voice still being synthesised when it was replaced or switched off never plays.
+  const st = useRef({ output: false, gen: 0, manual: false, awakeUntil: 0, awakeTimer: 0, vad: null as MicVAD | null, loading: null as Promise<MicVAD | null> | null, listening: false,
     handsFree: false, speaking: false, heardWhileSpeaking: false, maxTimer: 0,
     audio: null as HTMLAudioElement | null, waiting: false, fillerTimer: 0, lastFiller: "", fillerPlaying: false,
     fillers: new Map<string, string>() });
@@ -219,9 +221,12 @@ export function useVoice(lang: string, onText: (text: string) => void) {
     return r.ok ? URL.createObjectURL(await r.blob()) : null;
   }
 
-  async function play(url: string) {
+  /** Plays one voice; only ever one at a time (a newer one or a stop cuts it). */
+  async function play(url: string, gen: number) {
     const s = st.current;
+    if (gen !== s.gen) return;
     const wasAwake = Date.now() < s.awakeUntil;  // a conversation is going on: after the app speaks, no word needed again
+    s.audio?.pause();
     const audio = s.audio = new Audio(url);
     s.speaking = true; setStatus("speaking");
     await new Promise<void>(resolve => {
@@ -232,18 +237,30 @@ export function useVoice(lang: string, onText: (text: string) => void) {
     if (wasAwake && s.handsFree) wake();
   }
 
-  /** Reads text aloud: verified server voice, else the browser's voice for this language, else silent. */
-  async function speak(text: string): Promise<boolean> {
+  /** Reads text aloud: verified server voice, else the browser's voice for this language, else silent.
+   *  Only when speaking is on, unless the mechanic asked for it (`manual`, the «Прослушать» button).
+   *  A newer speech replaces this one, also while it is still being synthesised. */
+  async function speak(text: string, manual = false): Promise<boolean> {
     const s = st.current;
+    if (!manual && !s.output) return false;
     stopSpeaking();
+    const gen = s.gen;
     if (!text.trim()) return false;
     s.speaking = true; setStatus("speaking");
     try {
       const url = await ttsUrl(text);
-      if (url) { await play(url); URL.revokeObjectURL(url); return true; }
+      if (gen !== s.gen) { if (url) URL.revokeObjectURL(url); return false; }  // replaced or switched off meanwhile
+      if (url) { await play(url, gen); URL.revokeObjectURL(url); return true; }
     } catch { /* fall through to the browser voice */ }
+    if (gen !== s.gen) return false;
     const voice = speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith(langRef.current));
-    if (voice) await new Promise<void>(resolve => {
+    if (!voice) {  // could not be read word for word and no browser voice: say where the answer is, not nothing
+      const url = s.fillers.get(langRef.current + (FILLERS[langRef.current] ?? FILLERS.ru).screen[0]);
+      if (url) await play(url, gen);
+      if (gen === s.gen) { s.speaking = false; idle(); }
+      return false;
+    }
+    await new Promise<void>(resolve => {
       const u = new SpeechSynthesisUtterance(text);
       u.voice = voice; u.lang = voice.lang; u.onend = () => resolve(); u.onerror = () => resolve();
       speechSynthesis.speak(u);
@@ -254,16 +271,29 @@ export function useVoice(lang: string, onText: (text: string) => void) {
 
   function stopSpeaking() {
     const s = st.current;
+    s.gen++;
     s.audio?.pause(); s.audio = null;
     speechSynthesis.cancel();
     s.speaking = false;
+  }
+
+  /** Voice mode or «Озвучка» switched: off silences everything at once (speech, fillers) and keeps it silent. */
+  function setOutput(on: boolean) {
+    const s = st.current;
+    if (s.output === on) return;
+    s.output = on;
+    if (!on) {
+      s.waiting = false;
+      clearTimeout(s.fillerTimer);
+      if (s.audio || s.speaking) { stopSpeaking(); idle(); }
+    }
   }
 
   /** Fetches the filler phrases of this language once (the server keeps them too), so they play at once. */
   async function warmUp() {
     const s = st.current;
     const set = FILLERS[langRef.current] ?? FILLERS.ru;
-    for (const text of [...set.listen, ...set.start, ...set.wait]) {
+    for (const text of [...set.listen, ...set.start, ...set.wait, ...set.screen]) {
       const key = langRef.current + text;
       if (s.fillers.has(key)) continue;
       const url = await ttsUrl(text).catch(() => null);
@@ -277,16 +307,17 @@ export function useVoice(lang: string, onText: (text: string) => void) {
     const options = set.filter(x => x !== s.lastFiller);
     const text = options[Math.floor(Math.random() * options.length)];
     const url = s.fillers.get(langRef.current + text);
-    if (!url || (kind !== "listen" && !s.waiting) || s.speaking) return;  // not fetched yet: stay silent rather than wait for it
+    if (!url || !s.output || (kind !== "listen" && !s.waiting) || s.speaking) return;  // not fetched yet: stay silent rather than wait
     s.lastFiller = text;
     s.fillerPlaying = true;
-    await play(url);
+    await play(url, s.gen);
     s.fillerPlaying = false;
   }
 
   /** While the agent works: "Думаю…" right away, then now and then "Ещё чуть-чуть…". The answer itself stops it. */
   function waiting(on: boolean) {
     const s = st.current;
+    on = on && s.output;
     if (on === s.waiting) return;
     s.waiting = on;
     clearTimeout(s.fillerTimer);
@@ -305,7 +336,7 @@ export function useVoice(lang: string, onText: (text: string) => void) {
     s.vad?.destroy().catch(() => {});  // never started: nothing to release
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { status, handsFree, awake, level, error, listen, toggleHandsFree, speak, stopSpeaking, warmUp, waiting };
+  return { status, handsFree, awake, level, error, listen, toggleHandsFree, speak, stopSpeaking, setOutput, warmUp, waiting };
 }
 
 export type Voice = ReturnType<typeof useVoice>;

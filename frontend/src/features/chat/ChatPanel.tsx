@@ -11,9 +11,18 @@ import type { PhotoCheck } from "../../types/domain";
 import { LiveProgress, ProgressLog } from "../../components/ui/AgentProgress";
 
 /** First paragraph of an answer, without markdown: what gets read aloud. */
+/** What is read aloud of an answer: its first one or two sentences, without page and figure references (the
+ *  server reads only what its voice says word for word, and shorter plain text passes that check). */
 export function speakable(answer: string): string {
-  const first = answer.split(/\n\s*\n/)[0] ?? "";
-  return first.replace(/\*\*/g, "").replace(/\([^()]*стр\. \d+\)/g, "").replace(/^[#\-*•\d.)\s]+/gm, "").trim().slice(0, 400);
+  const first = (answer.split(/\n\s*\n/)[0] ?? "").replace(/\*\*/g, "")
+    .replace(/\([^()]*(стр\.|рис\.|см\.|bet|쪽)[^()]*\)/gi, "").replace(/^[#\-*•\d.)\s]+/gm, "").replace(/\s+/g, " ").replace(/\s+([.,;:!?])/g, "$1").trim();
+  const sentences = first.match(/[^.!?…]+[.!?…]*/g) ?? [first];
+  let out = "";
+  for (const s of sentences) {
+    if (out && (out + s).length > 260) break;
+    out += s;
+  }
+  return out.trim().slice(0, 400);
 }
 
 /** Chat with the agent: live progress, answers as step cards with sources, photos, quick questions; optional voice. */
