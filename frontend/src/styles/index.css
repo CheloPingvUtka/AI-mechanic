@@ -359,6 +359,9 @@
 .vehicle-card.anamnesis-vehicle{max-width:none;display:grid;grid-template-columns:minmax(110px,34%) minmax(0,1fr);align-items:center;column-gap:4px}.anamnesis-vehicle .vehicle-card__photo{grid-column:1;grid-row:1/span 3;align-self:stretch;aspect-ratio:auto;min-height:110px}.anamnesis-vehicle>:not(.vehicle-card__photo){grid-column:2;min-width:0}
 .check-history{display:grid;gap:10px}.check-history h2{margin:0;font-size:18px}.check-history ol{list-style:none;margin:0;padding:0;display:grid;gap:6px}.check-history li button{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:12px auto minmax(0,1fr) auto;align-items:center;gap:10px;min-height:48px;padding:8px 12px;border:1px solid #e3e8ec;border-radius:12px;background:#fff}.check-history li button.current{border-color:#f28a35;box-shadow:0 0 0 2px #f28a3533}.check-history .dot{width:10px;height:10px;border-radius:50%;background:#9aa5ad}.check-history .dot.s-anomaly{background:#d9534f}.check-history .dot.s-normal{background:#35b77a}.check-history .ch-date{font-size:13px;color:#71808b;font-variant-numeric:tabular-nums}.check-history b{font-weight:650;font-size:15px;min-width:0;overflow-wrap:break-word;hyphens:auto}.check-history em{font-style:normal;font-weight:700;color:#52616c;font-variant-numeric:tabular-nums}
 .anamnesis-vehicle .vehicle-card__spec{min-width:0;grid-template-columns:auto minmax(0,1fr);gap:4px 8px}.anamnesis-vehicle .vehicle-card__spec dd{min-width:0;flex-wrap:wrap;justify-content:flex-end;white-space:normal;overflow-wrap:anywhere;text-align:right}
+@media(max-width:760px){
+  .vehicle-card.anamnesis-vehicle {display: block;align-items: unset;}
+}  
 /* Wide screens: the work and the chat share the whole width; the chat grows with the screen and reaches the
    right edge instead of a narrow 440 px column between empty margins. */
 @media(min-width:1200px){

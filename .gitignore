@@ -61,3 +61,4 @@ embeddings/
 
 # Local database and photos (repair sessions, service book)
 backend/data/
+digital_mechanic_backend.egg-info
